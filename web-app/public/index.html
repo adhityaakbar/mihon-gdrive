@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Komik Aneta — Google Drive Comic Reader</title>
+  <title>Komik Aneta — Mihon Web Comic Reader</title>
   
   <!-- iOS PWA Meta Tags -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Komik Aneta">
-  <meta name="theme-color" content="#090d16">
+  <meta name="theme-color" content="#020617">
 
-  <!-- Favicon & Icons -->
+  <!-- Favicon & Manifest -->
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="apple-touch-icon" href="/icon.svg">
   <link rel="manifest" href="/manifest.json">
@@ -19,7 +19,7 @@
   <!-- Google Fonts: Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 
   <!-- Tailwind CSS & Lucide Icons -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -31,8 +31,8 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   </script>
 
-  <!-- JSZip CDN for CBZ/ZIP -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- StPageFlip (Realistic 3D Book Page Flip Library) -->
+  <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
 
   <script>
     tailwind.config = {
@@ -41,6 +41,7 @@
         extend: {
           fontFamily: {
             sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
           },
           colors: {
             brand: {
@@ -57,7 +58,7 @@
   </script>
 
   <style>
-    /* Safe area padding for notch & home indicator */
+    /* Safe Area insets for iPhone notch and home indicator */
     body {
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
@@ -65,10 +66,11 @@
       padding-right: env(safe-area-inset-right);
       -webkit-tap-highlight-color: transparent;
       user-select: none;
+      -webkit-user-select: none;
     }
     .custom-scrollbar::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
+      width: 5px;
+      height: 5px;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
       background: transparent;
@@ -77,7 +79,6 @@
       background: rgba(255, 255, 255, 0.15);
       border-radius: 9999px;
     }
-    /* Hide scrollbar for reader */
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
@@ -85,34 +86,105 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+
+    /* Realistic 3D Book Page Styling */
+    .st-page-flip {
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+    .page {
+      background-color: #0b0f19;
+      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.4);
+    }
+    .page-content {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+    /* Book spine gradient lighting */
+    .page-spine-shadow-left {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      width: 30px;
+      background: linear-gradient(to left, rgba(0,0,0,0.35), transparent);
+      pointer-events: none;
+      z-index: 5;
+    }
+    .page-spine-shadow-right {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 30px;
+      background: linear-gradient(to right, rgba(0,0,0,0.35), transparent);
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Horizontal Slide animation */
+    .slide-track {
+      display: flex;
+      transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+      width: 100%;
+      height: 100%;
+    }
+    .slide-page {
+      flex: 0 0 100%;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Webtoon seamless continuous strip */
+    .webtoon-page {
+      margin: 0 !important;
+      padding: 0 !important;
+      display: block;
+      width: 100%;
+      line-height: 0;
+    }
+    .webtoon-page img, .webtoon-page canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased overflow-x-hidden selection:bg-brand-500 selection:text-white">
 
-  <!-- Top Sticky Header -->
+  <!-- ================= TOP HEADER (CATALOG / DETAIL) ================= -->
   <header id="main-header" class="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 transition-all duration-300">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
       
-      <!-- Back button (visible when not in catalog) -->
+      <!-- Back button (visible when in comic detail) -->
       <button id="btn-back" class="hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition active:scale-95" onclick="navigateBack()">
         <i data-lucide="arrow-left" class="w-5 h-5"></i>
       </button>
 
       <!-- Logo & App Title -->
       <div id="header-brand" class="flex items-center gap-2.5 cursor-pointer" onclick="showCatalogView()">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/25">
           <i data-lucide="book-open" class="w-5 h-5"></i>
         </div>
         <div>
           <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-1.5 leading-tight">
             Komik Aneta
-            <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 border border-brand-500/30">iOS PWA</span>
+            <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 border border-brand-500/30">Mihon Web</span>
           </h1>
           <p id="header-subtitle" class="text-xs text-slate-400">Google Drive Reader</p>
         </div>
       </div>
 
-      <!-- Search Input in Header (Catalog only) -->
+      <!-- Search Input in Header (Desktop) -->
       <div id="header-search" class="flex-1 max-w-md hidden sm:block relative">
         <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
         <input type="text" id="comic-search" placeholder="Cari komik (Conan, Yaiba, Tintin...)" 
@@ -141,13 +213,12 @@
 
   <!-- ================= VIEW 1: CATALOG ================= -->
   <main id="view-catalog" class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
-    
     <!-- Hero / Status Banner -->
     <div class="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
         <div class="flex items-center gap-2 text-xs font-semibold text-brand-400 mb-1">
           <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          FOLDER GOOGLE DRIVE AKTIF
+          GOOGLE DRIVE CLOUD READER
         </div>
         <h2 id="catalog-title" class="text-lg sm:text-xl font-bold text-white">Memuat Koleksi Komik...</h2>
         <p id="catalog-count" class="text-xs sm:text-sm text-slate-400 mt-0.5">Menghubungkan ke Google Drive...</p>
@@ -162,9 +233,7 @@
     </div>
 
     <!-- Loading Skeleton -->
-    <div id="catalog-loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-      <!-- Skeletons generated by JS -->
-    </div>
+    <div id="catalog-loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4"></div>
 
     <!-- Empty State -->
     <div id="catalog-empty" class="hidden text-center py-20">
@@ -176,9 +245,7 @@
     </div>
 
     <!-- Comics Grid -->
-    <div id="comics-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-      <!-- Cards rendered by JS -->
-    </div>
+    <div id="comics-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4"></div>
   </main>
 
   <!-- ================= VIEW 2: COMIC DETAIL ================= -->
@@ -213,7 +280,7 @@
       <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400">Daftar Chapter / Volume</h3>
       <button onclick="toggleChapterSort()" class="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1">
         <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
-        <span id="sort-order-label">Terbaru ke Terlama</span>
+        <span id="sort-order-label">Terlama ke Terbaru</span>
       </button>
     </div>
 
@@ -224,17 +291,15 @@
     </div>
 
     <!-- Chapter Items -->
-    <div id="chapters-list" class="space-y-2">
-      <!-- Chapters rendered by JS -->
-    </div>
+    <div id="chapters-list" class="space-y-2"></div>
   </main>
 
-  <!-- ================= VIEW 3: FULLSCREEN READER ================= -->
-  <div id="view-reader" class="hidden fixed inset-0 z-50 bg-black flex flex-col overflow-hidden">
+  <!-- ================= VIEW 3: FULLSCREEN MIHON READER ================= -->
+  <div id="view-reader" class="hidden fixed inset-0 z-50 bg-black flex flex-col overflow-hidden select-none">
     
-    <!-- Reader Top Bar -->
-    <div id="reader-topbar" class="absolute top-0 inset-x-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 flex items-center justify-between gap-3 transition-transform duration-300">
-      <button onclick="closeReader()" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition active:scale-95">
+    <!-- Reader Top Bar (Collapsible) -->
+    <div id="reader-topbar" class="absolute top-0 inset-x-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-3 flex items-center justify-between gap-3 transition-transform duration-300">
+      <button onclick="closeReader()" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition active:scale-95" title="Tutup Reader">
         <i data-lucide="arrow-left" class="w-5 h-5"></i>
       </button>
 
@@ -244,71 +309,273 @@
       </div>
 
       <div class="flex items-center gap-1.5">
-        <button onclick="toggleReaderMode()" id="btn-mode-toggle" class="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300 hover:text-white flex items-center gap-1">
-          <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-          <span id="reader-mode-label">Scroll</span>
+        <!-- Sound Toggle -->
+        <button onclick="toggleSound()" id="btn-sound" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition" title="Suara Kertas Flip">
+          <i data-lucide="volume-2" id="icon-sound" class="w-4 h-4"></i>
+        </button>
+
+        <!-- Reading Mode Button -->
+        <button onclick="openModeModal()" id="btn-mode" class="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 hover:text-white flex items-center gap-1.5 transition">
+          <i data-lucide="book" class="w-3.5 h-3.5 text-brand-400"></i>
+          <span id="current-mode-label" class="font-medium">Buku 3D (RTL)</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+        </button>
+
+        <!-- Chapter Drawer Toggle -->
+        <button onclick="toggleChapterDrawer()" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition" title="Daftar Chapter">
+          <i data-lucide="list" class="w-4 h-4"></i>
         </button>
       </div>
     </div>
 
-    <!-- Reader Main Content Container -->
-    <div id="reader-container" class="flex-1 w-full h-full overflow-y-auto overflow-x-hidden relative flex flex-col items-center custom-scrollbar" onclick="toggleReaderControls()">
-      <!-- Canvas / Pages injected here -->
-      <div id="reader-spinner" class="m-auto text-center py-20 text-slate-400">
-        <i data-lucide="loader" class="w-8 h-8 animate-spin mx-auto text-brand-500 mb-3"></i>
-        <p class="text-sm font-medium" id="reader-status-text">Mengunduh PDF & Membaca halaman...</p>
-        <p class="text-xs text-slate-500 mt-1">Halaman dirender langsung di browser Anda</p>
+    <!-- Reader Main Stage -->
+    <div id="reader-stage" class="relative flex-1 w-full h-full overflow-hidden flex items-center justify-center bg-black">
+      
+      <!-- Loading Indicator -->
+      <div id="reader-spinner" class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-sm text-slate-400">
+        <div class="relative w-12 h-12 mb-4">
+          <div class="w-12 h-12 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
+          <i data-lucide="book-open" class="w-5 h-5 text-indigo-400 absolute inset-0 m-auto"></i>
+        </div>
+        <p class="text-sm font-semibold text-slate-200" id="reader-status-text">Menyiapkan buku komik...</p>
+        <p class="text-xs text-slate-500 mt-1" id="reader-substatus-text">Memuat halaman dengan efek buku 3D</p>
       </div>
 
-      <div id="pages-container" class="w-full flex flex-col items-center gap-2 py-16">
-        <!-- Canvas pages -->
+      <!-- MODE A: 3D Realistic Book Flip Container -->
+      <div id="container-book" class="w-full h-full flex items-center justify-center overflow-hidden p-2 sm:p-4">
+        <div id="flipbook" class="relative"></div>
+      </div>
+
+      <!-- MODE B: Horizontal Slide Container -->
+      <div id="container-slide" class="hidden w-full h-full overflow-hidden relative">
+        <div id="slide-track" class="slide-track"></div>
+      </div>
+
+      <!-- MODE C: Webtoon Continuous Vertical Scroll Container -->
+      <div id="container-webtoon" class="hidden w-full h-full overflow-y-auto overflow-x-hidden relative custom-scrollbar">
+        <div id="webtoon-track" class="w-full max-w-3xl mx-auto flex flex-col items-center py-12"></div>
+      </div>
+
+      <!-- Invisible Mihon Tap Zones (Click Navigation) -->
+      <!-- Left 30%: Page Flip / Prev or Next depending on RTL/LTR -->
+      <!-- Center 40%: Toggle UI Controls (Top bar, Bottom bar, HUD) -->
+      <!-- Right 30%: Page Flip / Next or Prev depending on RTL/LTR -->
+      <div id="tap-zone-left" class="absolute inset-y-0 left-0 w-[30%] z-20 cursor-pointer opacity-0 hover:bg-white/[0.02]" onclick="onTapZone('left')"></div>
+      <div id="tap-zone-center" class="absolute inset-y-0 left-[30%] w-[40%] z-20 cursor-pointer" onclick="onTapZone('center')"></div>
+      <div id="tap-zone-right" class="absolute inset-y-0 right-0 w-[30%] z-20 cursor-pointer opacity-0 hover:bg-white/[0.02]" onclick="onTapZone('right')"></div>
+
+      <!-- Discreet Floating HUD (Visible when bars are hidden, Mihon style) -->
+      <div id="reader-floating-hud" class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 px-3.5 py-1.5 rounded-full bg-slate-950/75 backdrop-blur-md border border-slate-800/80 text-[11px] font-mono text-slate-400 pointer-events-none transition-opacity duration-300 flex items-center gap-2 shadow-lg">
+        <span id="hud-page" class="font-bold text-slate-200">1 / 1</span>
+        <span class="text-slate-600">•</span>
+        <span id="hud-clock">00:00</span>
+        <span id="hud-battery" class="hidden">• <span id="hud-battery-val">100%</span></span>
+      </div>
+
+      <!-- End of Chapter Card (When flipping past last page) -->
+      <div id="end-chapter-overlay" class="hidden absolute inset-0 z-30 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center shadow-2xl">
+          <div class="w-14 h-14 mx-auto rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4">
+            <i data-lucide="check-circle-2" class="w-8 h-8"></i>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-1">Selesai Membaca!</h3>
+          <p id="end-chapter-curr-name" class="text-xs text-slate-400 mb-6">Chapter telah selesai.</p>
+
+          <div id="next-chapter-box" class="mb-6 p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50 text-left">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-brand-400">Chapter Selanjutnya</span>
+            <h4 id="next-chapter-title" class="text-sm font-semibold text-white mt-0.5 truncate">Next Chapter Name</h4>
+          </div>
+
+          <div class="flex flex-col gap-2.5">
+            <button id="btn-next-chapter" onclick="loadNextChapter()" class="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-brand-500/25 transition active:scale-98">
+              <i data-lucide="skip-forward" class="w-4 h-4"></i>
+              Lanjut ke Chapter Selanjutnya
+            </button>
+            <button onclick="closeEndChapterOverlay()" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition">
+              Kembali ke Halaman Terakhir
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Reader Bottom Bar -->
-    <div id="reader-bottombar" class="absolute bottom-0 inset-x-0 z-30 bg-slate-950/90 backdrop-blur-md border-t border-slate-800/80 px-4 py-3 flex flex-col gap-2 transition-transform duration-300">
-      <div class="flex items-center gap-3">
-        <button onclick="prevPage()" class="p-2 rounded-lg bg-slate-900 text-slate-300 hover:text-white disabled:opacity-30" id="btn-prev-page">
-          <i data-lucide="chevron-left" class="w-5 h-5"></i>
+    <!-- Reader Bottom Bar (Collapsible) -->
+    <div id="reader-bottombar" class="absolute bottom-0 inset-x-0 z-40 bg-slate-950/90 backdrop-blur-md border-t border-slate-800/80 px-4 py-3 flex flex-col gap-2 transition-transform duration-300">
+      <div class="max-w-3xl mx-auto w-full flex items-center gap-3">
+        <!-- Prev Chapter -->
+        <button onclick="loadPrevChapter()" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition active:scale-95" id="btn-prev-chapter" title="Chapter Sebelumnya">
+          <i data-lucide="chevron-first" class="w-4 h-4"></i>
         </button>
 
-        <input type="range" id="reader-seekbar" min="1" max="1" value="1" 
-               class="flex-1 accent-indigo-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
-               oninput="onSeek(this.value)">
-
-        <button onclick="nextPage()" class="p-2 rounded-lg bg-slate-900 text-slate-300 hover:text-white disabled:opacity-30" id="btn-next-page">
-          <i data-lucide="chevron-right" class="w-5 h-5"></i>
+        <!-- Prev Page -->
+        <button onclick="flipPageBackward()" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition active:scale-95" id="btn-prev-page" title="Halaman Sebelumnya">
+          <i data-lucide="chevron-left" class="w-4 h-4"></i>
         </button>
 
-        <span id="reader-page-indicator" class="text-xs font-mono font-semibold text-slate-300 min-w-[65px] text-right">
-          0 / 0
+        <!-- Seekbar Slider -->
+        <div class="flex-1 flex items-center relative">
+          <input type="range" id="reader-seekbar" min="1" max="1" value="1" 
+                 class="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                 oninput="onSeekbarInput(this.value)">
+        </div>
+
+        <!-- Next Page -->
+        <button onclick="flipPageForward()" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition active:scale-95" id="btn-next-page" title="Halaman Selanjutnya">
+          <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>
+
+        <!-- Next Chapter -->
+        <button onclick="loadNextChapter()" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition active:scale-95" id="btn-next-chapter-bottom" title="Chapter Selanjutnya">
+          <i data-lucide="chevron-last" class="w-4 h-4"></i>
+        </button>
+
+        <!-- Page Indicator Counter -->
+        <span id="reader-page-counter" class="text-xs font-mono font-bold text-slate-300 min-w-[65px] text-right">
+          1 / 1
         </span>
+      </div>
+    </div>
+
+    <!-- Chapter Drawer (Slide-over side drawer) -->
+    <div id="chapter-drawer" class="fixed inset-y-0 right-0 z-50 w-full sm:w-80 bg-slate-900 border-l border-slate-800 transform translate-x-full transition-transform duration-300 flex flex-col shadow-2xl">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-bold text-white">Daftar Chapter</h3>
+          <p id="drawer-comic-title" class="text-[11px] text-slate-400 truncate">Nama Komik</p>
+        </div>
+        <button onclick="toggleChapterDrawer(false)" class="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div id="drawer-chapters-list" class="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar"></div>
+    </div>
+
+    <!-- Reading Mode Modal / Bottom Sheet -->
+    <div id="mode-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="closeModeModal(event)">
+      <div class="bg-slate-900 border border-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl" onclick="event.stopPropagation()">
+        
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center">
+              <i data-lucide="settings-2" class="w-4 h-4"></i>
+            </div>
+            <h3 class="text-sm font-bold text-white">Mode Membaca (Mihon)</h3>
+          </div>
+          <button onclick="closeModeModal()" class="p-1 rounded-lg text-slate-400 hover:text-white">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="space-y-2 mb-5">
+          <!-- 1. Buku 3D Manga RTL -->
+          <div onclick="selectReadingMode('book-rtl')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-book-rtl">
+            <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="book-open" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1.5">
+                <h4 class="text-xs font-bold text-white">Buku 3D — Manga (RTL)</h4>
+                <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300">Rekomendasi</span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-0.5">Animasi membalik buku fisik 3D, arah kanan ke kiri ala komik Jepang.</p>
+            </div>
+          </div>
+
+          <!-- 2. Buku 3D Barat LTR -->
+          <div onclick="selectReadingMode('book-ltr')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-book-ltr">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="book" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Buku 3D — Barat (LTR)</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Animasi membalik buku fisik 3D, arah kiri ke kanan ala komik Barat.</p>
+            </div>
+          </div>
+
+          <!-- 3. Slide Horizontal RTL -->
+          <div onclick="selectReadingMode('slide-rtl')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-slide-rtl">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="move-horizontal" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Slide Horizontal (RTL)</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Geser halaman samping kanan-ke-kiri tanpa efek curl buku.</p>
+            </div>
+          </div>
+
+          <!-- 4. Slide Horizontal LTR -->
+          <div onclick="selectReadingMode('slide-ltr')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-slide-ltr">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="arrow-right-left" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Slide Horizontal (LTR)</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Geser halaman samping kiri-ke-kanan standar.</p>
+            </div>
+          </div>
+
+          <!-- 5. Webtoon Vertikal -->
+          <div onclick="selectReadingMode('webtoon')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-webtoon">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="arrow-down" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Webtoon (Vertikal)</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Gulir vertikal berkelanjutan tanpa jeda antar lembar.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sound Effect Toggle -->
+        <div class="pt-3 border-t border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <i data-lucide="volume-2" class="w-4 h-4 text-slate-400"></i>
+            <div>
+              <p class="text-xs font-semibold text-slate-200">Suara Kertas Flip Realistis</p>
+              <p class="text-[10px] text-slate-500">Efek desiran kertas saat membalik halaman</p>
+            </div>
+          </div>
+          <button onclick="toggleSound()" id="toggle-sound-btn" class="w-11 h-6 rounded-full bg-brand-600 p-0.5 transition flex items-center">
+            <div id="toggle-sound-circle" class="w-5 h-5 rounded-full bg-white shadow-md transform translate-x-5 transition"></div>
+          </button>
+        </div>
+
       </div>
     </div>
 
   </div>
 
-  <!-- APPLICATION LOGIC SCRIPT -->
+  <!-- ================= JAVASCRIPT APPLICATION CODE ================= -->
   <script>
-    // App State
+    // Global State
     let currentFolderId = "1m6tcNvSysd0kE2x-33dxGtkXlXVJsYMB";
     let allComics = [];
     let currentComic = null;
     let currentChapters = [];
-    let isSortDesc = true;
+    let isSortDesc = false; // Terlama ke terbaru (default manga reading order)
 
     // Reader State
-    let currentPdfDoc = null;
-    let totalPdfPages = 0;
-    let currentPdfPage = 1;
-    let readerMode = 'scroll'; // 'scroll' or 'paged'
+    // Modes: 'book-rtl', 'book-ltr', 'slide-rtl', 'slide-ltr', 'webtoon'
+    let readingMode = localStorage.getItem('komik_reading_mode') || 'book-rtl';
+    let isSoundEnabled = localStorage.getItem('komik_sound_enabled') !== '0'; // default ON
+    let activeChapter = null;
+    let activeChapterIndex = -1;
+    let totalPages = 0;
+    let currentPage = 1;
     let controlsVisible = true;
-    let renderedPages = new Set();
-    let currentChapterObj = null;
+    let pageFlipInstance = null;
+    let pdfDocument = null;
+    let chapterPagesData = null; // { type: 'images'|'pdf', pages: [...] }
+    let pageBlobs = []; // for PDF rendered images
+    let audioContext = null;
 
-    // Initialize Lucide icons
+    // Initialize App
     document.addEventListener("DOMContentLoaded", () => {
       lucide.createIcons();
+      updateModeUI();
+      updateSoundUI();
+      startHUDClock();
       loadCatalog();
     });
 
@@ -394,7 +661,7 @@
       const grid = document.getElementById('comics-grid');
       grid.innerHTML = comics.map(c => `
         <div onclick='openComic(${JSON.stringify(c).replace(/'/g, "&apos;")})'
-             class="group cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 rounded-2xl overflow-hidden border border-slate-800/80 hover:border-slate-700 transition duration-200 transform active:scale-95 shadow-lg flex flex-col">
+             class="group cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 rounded-2xl overflow-hidden border border-slate-800/80 hover:border-brand-500/50 transition duration-200 transform active:scale-95 shadow-lg flex flex-col">
           <div class="aspect-[3/4] w-full bg-slate-800 relative overflow-hidden">
             <img src="${c.cover || '/icon.svg'}" alt="${c.title}" 
                  loading="lazy"
@@ -464,15 +731,15 @@
         return isSortDesc ? -cmp : cmp;
       });
 
-      list.innerHTML = sorted.map(ch => {
+      list.innerHTML = sorted.map((ch, idx) => {
         const sizeMb = ch.size ? (ch.size / (1024 * 1024)).toFixed(1) + ' MB' : '';
         const extBadge = ch.extension.toUpperCase();
         return `
-          <div onclick='openReader(${JSON.stringify(ch).replace(/'/g, "&apos;")})'
+          <div onclick='launchReader(${JSON.stringify(ch).replace(/'/g, "&apos;")})'
                class="p-3.5 sm:p-4 rounded-xl bg-slate-900 hover:bg-slate-800/80 border border-slate-800/80 hover:border-brand-500/40 flex items-center justify-between gap-3 cursor-pointer transition active:scale-98 group">
             <div class="flex items-center gap-3 min-w-0">
               <div class="w-8 h-8 rounded-lg bg-brand-500/10 text-brand-400 border border-brand-500/20 flex items-center justify-center flex-shrink-0 group-hover:bg-brand-500 group-hover:text-white transition">
-                <i data-lucide="file-text" class="w-4 h-4"></i>
+                <i data-lucide="book-open" class="w-4 h-4"></i>
               </div>
               <div class="min-w-0">
                 <h4 class="text-xs sm:text-sm font-semibold text-slate-200 group-hover:text-brand-300 truncate">${ch.name}</h4>
@@ -498,7 +765,7 @@
       renderChapters();
     }
 
-    // --- RESUME LOGIC ---
+    // --- PROGRESS & RESUME ---
     function checkResumeButton(comicId) {
       const btn = document.getElementById('btn-resume');
       const progress = getSavedProgress(comicId);
@@ -517,18 +784,19 @@
       if (progress && progress.chapterId) {
         const targetChapter = currentChapters.find(ch => ch.id === progress.chapterId) || currentChapters[0];
         if (targetChapter) {
-          openReader(targetChapter, progress.page || 1);
+          launchReader(targetChapter, progress.page || 1);
         }
       }
     }
 
-    function saveProgress(comicId, chapterId, chapterName, page) {
+    function saveCurrentProgress() {
+      if (!currentComic || !activeChapter) return;
       try {
-        const key = `progress_${comicId}`;
+        const key = `progress_${currentComic.id}`;
         localStorage.setItem(key, JSON.stringify({
-          chapterId,
-          chapterName,
-          page,
+          chapterId: activeChapter.id,
+          chapterName: activeChapter.name,
+          page: currentPage,
           timestamp: Date.now()
         }));
       } catch (_) {}
@@ -542,215 +810,721 @@
       }
     }
 
-    // --- READER IMPLEMENTATION ---
-    async function openReader(chapter, startPage = 1) {
-      currentChapterObj = chapter;
+    // --- REALISTIC PAPER TURN SOUND SYNTHESIS (Web Audio API) ---
+    function playPaperRustleSound() {
+      if (!isSoundEnabled) return;
+      try {
+        if (!audioContext) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) audioContext = new AudioContextClass();
+        }
+        if (!audioContext) return;
+        if (audioContext.state === 'suspended') {
+          audioContext.resume();
+        }
+
+        // Realistic paper flip audio envelope
+        const duration = 0.14; // 140ms
+        const sampleRate = audioContext.sampleRate;
+        const bufferSize = Math.floor(sampleRate * duration);
+        const buffer = audioContext.createBuffer(1, bufferSize, sampleRate);
+        const output = buffer.getChannelData(0);
+
+        let lastSample = 0.0;
+        for (let i = 0; i < bufferSize; i++) {
+          const progress = i / bufferSize;
+          // Dual white noise filtered
+          const white = Math.random() * 2 - 1;
+          lastSample = (lastSample * 0.75) + (white * 0.25);
+          // Realistic envelope: soft attack, parabolic curve, delicate decay
+          const env = Math.sin(progress * Math.PI) * Math.pow(1 - progress, 1.2);
+          output[i] = lastSample * env * 0.3;
+        }
+
+        const whiteNoise = audioContext.createBufferSource();
+        whiteNoise.buffer = buffer;
+
+        // Bandpass filter centered at 2000Hz creates crisp paper fiber friction
+        const bandpass = audioContext.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.value = 2100;
+        bandpass.Q.value = 1.1;
+
+        whiteNoise.connect(bandpass);
+        bandpass.connect(audioContext.destination);
+        whiteNoise.start();
+      } catch (err) {
+        console.warn('Audio play failed:', err);
+      }
+    }
+
+    // --- FULLSCREEN READER CORE ENGINE ---
+    async function launchReader(chapter, startPage = 1) {
+      activeChapter = chapter;
+      activeChapterIndex = currentChapters.findIndex(c => c.id === chapter.id);
+      currentPage = startPage;
+
       const reader = document.getElementById('view-reader');
       const spinner = document.getElementById('reader-spinner');
-      const pagesContainer = document.getElementById('pages-container');
       const statusText = document.getElementById('reader-status-text');
+      const substatus = document.getElementById('reader-substatus-text');
 
       reader.classList.remove('hidden');
       spinner.classList.remove('hidden');
-      pagesContainer.innerHTML = '';
-      statusText.textContent = `Mengunduh & Memuat ${chapter.name}...`;
+      closeEndChapterOverlay();
+      toggleControls(true);
 
       document.getElementById('reader-chapter-title').textContent = chapter.name;
       document.getElementById('reader-comic-title').textContent = currentComic ? currentComic.title : '';
+      statusText.textContent = `Mengunduh & Membaca ${chapter.name}...`;
+      substatus.textContent = 'Mempersiapkan efek animasi buku';
 
-      renderedPages.clear();
-      currentPdfDoc = null;
-      totalPdfPages = 0;
-      currentPdfPage = startPage;
+      // Update Chapter Drawer
+      renderChapterDrawer();
+
+      // Clean up previous reader instances
+      destroyCurrentReader();
 
       try {
-        const streamUrl = chapter.streamUrl;
-        
-        // Load PDF using PDF.js
-        const loadingTask = pdfjsLib.getDocument({
-          url: streamUrl,
-          cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-          cMapPacked: true,
-        });
+        // Query Chapter Descriptor
+        const pagesUrl = `/api/comics/${currentComic.id}/chapters/${chapter.id}/pages?name=${encodeURIComponent(chapter.fullName)}`;
+        const res = await fetch(pagesUrl);
+        const data = await res.json();
 
-        loadingTask.onProgress = function(progress) {
-          if (progress.total > 0) {
-            const percent = Math.round((progress.loaded / progress.total) * 100);
-            statusText.textContent = `Mengunduh PDF: ${percent}%...`;
-          }
-        };
-
-        const pdf = await loadingTask.promise;
-        currentPdfDoc = pdf;
-        totalPdfPages = pdf.numPages;
-
-        spinner.classList.add('hidden');
-        initReaderView(startPage);
-
-      } catch (err) {
-        console.error('Failed to open PDF:', err);
-        statusText.textContent = `Gagal memuat PDF: ${err.message}`;
-      }
-    }
-
-    function initReaderView(startPage = 1) {
-      const container = document.getElementById('pages-container');
-      container.innerHTML = '';
-
-      document.getElementById('reader-seekbar').max = totalPdfPages;
-      document.getElementById('reader-seekbar').value = startPage;
-      updatePageIndicator(startPage);
-
-      if (readerMode === 'scroll') {
-        // Create placeholders for all pages
-        for (let i = 1; i <= totalPdfPages; i++) {
-          const wrapper = document.createElement('div');
-          wrapper.id = `page-wrapper-${i}`;
-          wrapper.className = 'w-full max-w-3xl flex justify-center min-h-[500px] bg-slate-900/40 rounded-lg overflow-hidden my-1 shadow-md';
-          wrapper.dataset.page = i;
-
-          const canvas = document.createElement('canvas');
-          canvas.id = `canvas-page-${i}`;
-          canvas.className = 'w-full h-auto object-contain';
-          wrapper.appendChild(canvas);
-          container.appendChild(wrapper);
+        if (!data.success) {
+          throw new Error(data.error || 'Gagal memuat descriptor chapter');
         }
 
-        setupIntersectionObserver();
-        scrollToPage(startPage);
-      } else {
-        // Paged mode
-        const wrapper = document.createElement('div');
-        wrapper.id = 'single-page-wrapper';
-        wrapper.className = 'w-full max-w-3xl flex justify-center items-center min-h-[80vh]';
-        const canvas = document.createElement('canvas');
-        canvas.id = 'canvas-single-page';
-        canvas.className = 'max-h-[85vh] w-auto max-w-full object-contain shadow-2xl rounded-lg';
-        wrapper.appendChild(canvas);
-        container.appendChild(wrapper);
+        chapterPagesData = data;
 
-        renderSinglePage(startPage);
-      }
-    }
+        if (data.format === 'images') {
+          // Direct images from archive CBR / CBZ / RAR / ZIP
+          totalPages = data.totalPages;
+          await initReaderWithImages(data.pages, startPage);
+        } else {
+          // PDF document
+          statusText.textContent = 'Merender lembaran PDF...';
+          await initReaderWithPdf(data.streamUrl, startPage);
+        }
 
-    async function renderPageCanvas(pageNum, canvasId) {
-      if (!currentPdfDoc || pageNum < 1 || pageNum > totalPdfPages) return;
-      try {
-        const page = await currentPdfDoc.getPage(pageNum);
-        const canvas = document.getElementById(canvasId);
-        if (!canvas) return;
+        spinner.classList.add('hidden');
+        updatePageIndicator(currentPage);
+        saveCurrentProgress();
 
-        // Render at device pixel ratio for super sharp Retina display
-        const dpr = window.devicePixelRatio || 1;
-        const viewport = page.getViewport({ scale: 1.5 * dpr });
-
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        const ctx = canvas.getContext('2d');
-        const renderContext = {
-          canvasContext: ctx,
-          viewport: viewport
-        };
-        await page.render(renderContext).promise;
-        renderedPages.add(pageNum);
       } catch (err) {
-        console.error(`Error rendering page ${pageNum}:`, err);
+        console.error('Reader launch error:', err);
+        statusText.textContent = `Gagal memuat komik: ${err.message}`;
+        substatus.textContent = 'Silakan coba lagi atau pilih chapter lain';
       }
     }
 
-    function setupIntersectionObserver() {
+    function destroyCurrentReader() {
+      if (pageFlipInstance) {
+        try { pageFlipInstance.destroy(); } catch (_) {}
+        pageFlipInstance = null;
+      }
+      document.getElementById('flipbook').innerHTML = '';
+      document.getElementById('slide-track').innerHTML = '';
+      document.getElementById('webtoon-track').innerHTML = '';
+      pdfDocument = null;
+      pageBlobs = [];
+    }
+
+    // Initialize with direct image URLs (CBR / CBZ)
+    async function initReaderWithImages(imageUrls, startPage = 1) {
+      totalPages = imageUrls.length;
+      setupSeekbar(totalPages, startPage);
+
+      if (readingMode === 'book-rtl' || readingMode === 'book-ltr') {
+        initBookFlipMode(imageUrls, 'image', startPage);
+      } else if (readingMode === 'slide-rtl' || readingMode === 'slide-ltr') {
+        initSlideMode(imageUrls, 'image', startPage);
+      } else if (readingMode === 'webtoon') {
+        initWebtoonMode(imageUrls, 'image', startPage);
+      }
+    }
+
+    // Initialize with PDF document
+    async function initReaderWithPdf(streamUrl, startPage = 1) {
+      const statusText = document.getElementById('reader-status-text');
+      
+      const loadingTask = pdfjsLib.getDocument({
+        url: streamUrl,
+        cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+        cMapPacked: true,
+      });
+
+      loadingTask.onProgress = (p) => {
+        if (p.total > 0) {
+          const pct = Math.round((p.loaded / p.total) * 100);
+          statusText.textContent = `Mengunduh PDF: ${pct}%...`;
+        }
+      };
+
+      pdfDocument = await loadingTask.promise;
+      totalPages = pdfDocument.numPages;
+      setupSeekbar(totalPages, startPage);
+
+      // Render PDF pages
+      if (readingMode === 'book-rtl' || readingMode === 'book-ltr') {
+        initBookFlipMode(null, 'pdf', startPage);
+      } else if (readingMode === 'slide-rtl' || readingMode === 'slide-ltr') {
+        initSlideMode(null, 'pdf', startPage);
+      } else if (readingMode === 'webtoon') {
+        initWebtoonMode(null, 'pdf', startPage);
+      }
+    }
+
+    // --- MODE 1 & 2: 3D REALISTIC BOOK FLIP (StPageFlip) ---
+    function initBookFlipMode(imageUrls, type, startPage = 1) {
+      switchActiveContainer('book');
+      const flipContainer = document.getElementById('flipbook');
+      flipContainer.innerHTML = '';
+
+      const isRtl = readingMode === 'book-rtl';
+      const stage = document.getElementById('reader-stage');
+      const stageW = stage.clientWidth || window.innerWidth;
+      const stageH = stage.clientHeight || window.innerHeight;
+
+      // Realistic aspect ratio: typical manga is ~0.7 (550x780)
+      let pageW = Math.min(stageW * 0.95, 600);
+      let pageH = Math.min(stageH * 0.92, pageW / 0.7);
+      pageW = Math.round(pageH * 0.7);
+
+      // Create page elements
+      for (let i = 1; i <= totalPages; i++) {
+        const pageEl = document.createElement('div');
+        pageEl.className = 'page select-none';
+        pageEl.dataset.density = 'soft';
+
+        const content = document.createElement('div');
+        content.className = 'page-content bg-slate-950 flex items-center justify-center relative overflow-hidden';
+        content.style.width = '100%';
+        content.style.height = '100%';
+
+        // Book spine fold shading
+        const spineShadow = document.createElement('div');
+        spineShadow.className = isRtl ? 'page-spine-shadow-right' : 'page-spine-shadow-left';
+        content.appendChild(spineShadow);
+
+        if (type === 'image') {
+          const img = document.createElement('img');
+          img.src = imageUrls[i - 1];
+          img.className = 'w-full h-full object-contain pointer-events-none select-none';
+          img.loading = 'lazy';
+          img.alt = `Halaman ${i}`;
+          content.appendChild(img);
+        } else {
+          // PDF canvas
+          const canvas = document.createElement('canvas');
+          canvas.id = `book-pdf-canvas-${i}`;
+          canvas.className = 'max-w-full max-h-full object-contain pointer-events-none';
+          content.appendChild(canvas);
+        }
+
+        pageEl.appendChild(content);
+        flipContainer.appendChild(pageEl);
+      }
+
+      // Initialize StPageFlip
+      pageFlipInstance = new St.PageFlip(flipContainer, {
+        width: pageW,
+        height: pageH,
+        size: 'stretch',
+        minWidth: 260,
+        maxWidth: 1200,
+        minHeight: 380,
+        maxHeight: 1600,
+        maxShadowOpacity: 0.6,
+        showCover: false,
+        mobileScrollSupport: false,
+        usePortrait: true,
+        drawShadow: true,
+        flippingTime: 550,
+        startPage: Math.max(0, startPage - 1),
+        direction: isRtl ? 'rtl' : 'ltr'
+      });
+
+      pageFlipInstance.loadFromHTML(flipContainer.querySelectorAll('.page'));
+
+      // Events
+      pageFlipInstance.on('flip', (e) => {
+        currentPage = e.data + 1;
+        updatePageIndicator(currentPage);
+        playPaperRustleSound();
+        saveCurrentProgress();
+
+        if (type === 'pdf') {
+          renderPdfPageOnCanvas(currentPage, `book-pdf-canvas-${currentPage}`);
+          if (currentPage + 1 <= totalPages) renderPdfPageOnCanvas(currentPage + 1, `book-pdf-canvas-${currentPage + 1}`);
+          if (currentPage - 1 >= 1) renderPdfPageOnCanvas(currentPage - 1, `book-pdf-canvas-${currentPage - 1}`);
+        }
+
+        // Check end of chapter
+        if (currentPage >= totalPages) {
+          // If on last page, next flip prompts chapter end
+        }
+      });
+
+      // If PDF, render initial page
+      if (type === 'pdf') {
+        renderPdfPageOnCanvas(startPage, `book-pdf-canvas-${startPage}`);
+        if (startPage + 1 <= totalPages) renderPdfPageOnCanvas(startPage + 1, `book-pdf-canvas-${startPage + 1}`);
+      }
+    }
+
+    // --- MODE 3 & 4: HORIZONTAL SLIDE ---
+    function initSlideMode(imageUrls, type, startPage = 1) {
+      switchActiveContainer('slide');
+      const track = document.getElementById('slide-track');
+      track.innerHTML = '';
+
+      for (let i = 1; i <= totalPages; i++) {
+        const slide = document.createElement('div');
+        slide.className = 'slide-page flex items-center justify-center p-2';
+        slide.id = `slide-page-${i}`;
+
+        if (type === 'image') {
+          const img = document.createElement('img');
+          img.src = imageUrls[i - 1];
+          img.className = 'max-w-full max-h-full object-contain shadow-2xl rounded-lg';
+          img.loading = 'lazy';
+          slide.appendChild(img);
+        } else {
+          const canvas = document.createElement('canvas');
+          canvas.id = `slide-pdf-canvas-${i}`;
+          canvas.className = 'max-w-full max-h-full object-contain shadow-2xl rounded-lg';
+          slide.appendChild(canvas);
+        }
+
+        track.appendChild(slide);
+      }
+
+      jumpToSlide(startPage);
+
+      if (type === 'pdf') {
+        renderPdfPageOnCanvas(startPage, `slide-pdf-canvas-${startPage}`);
+        if (startPage + 1 <= totalPages) renderPdfPageOnCanvas(startPage + 1, `slide-pdf-canvas-${startPage + 1}`);
+      }
+    }
+
+    function jumpToSlide(pageNum) {
+      currentPage = pageNum;
+      const track = document.getElementById('slide-track');
+      const offset = (pageNum - 1) * 100;
+      track.style.transform = `translateX(-${offset}%)`;
+      updatePageIndicator(pageNum);
+      saveCurrentProgress();
+
+      if (chapterPagesData && chapterPagesData.format === 'pdf') {
+        renderPdfPageOnCanvas(pageNum, `slide-pdf-canvas-${pageNum}`);
+        if (pageNum + 1 <= totalPages) renderPdfPageOnCanvas(pageNum + 1, `slide-pdf-canvas-${pageNum + 1}`);
+      }
+    }
+
+    // --- MODE 5: WEBTOON CONTINUOUS VERTICAL ---
+    function initWebtoonMode(imageUrls, type, startPage = 1) {
+      switchActiveContainer('webtoon');
+      const track = document.getElementById('webtoon-track');
+      track.innerHTML = '';
+
+      for (let i = 1; i <= totalPages; i++) {
+        const pageEl = document.createElement('div');
+        pageEl.className = 'webtoon-page w-full flex justify-center bg-black';
+        pageEl.id = `webtoon-page-${i}`;
+        pageEl.dataset.page = i;
+
+        if (type === 'image') {
+          const img = document.createElement('img');
+          img.src = imageUrls[i - 1];
+          img.className = 'w-full h-auto object-contain';
+          img.loading = 'lazy';
+          pageEl.appendChild(img);
+        } else {
+          const canvas = document.createElement('canvas');
+          canvas.id = `webtoon-pdf-canvas-${i}`;
+          canvas.className = 'w-full h-auto object-contain';
+          pageEl.appendChild(canvas);
+        }
+
+        track.appendChild(pageEl);
+      }
+
+      // IntersectionObserver for tracking active page during vertical scroll
       const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             const pageNum = parseInt(entry.target.dataset.page, 10);
-            if (!renderedPages.has(pageNum)) {
-              renderPageCanvas(pageNum, `canvas-page-${pageNum}`);
-            }
-            currentPdfPage = pageNum;
+            currentPage = pageNum;
             updatePageIndicator(pageNum);
-            if (currentComic && currentChapterObj) {
-              saveProgress(currentComic.id, currentChapterObj.id, currentChapterObj.name, pageNum);
+            saveCurrentProgress();
+
+            if (type === 'pdf') {
+              renderPdfPageOnCanvas(pageNum, `webtoon-pdf-canvas-${pageNum}`);
             }
           }
         });
       }, { rootMargin: '300px 0px 300px 0px', threshold: 0.1 });
 
-      for (let i = 1; i <= totalPdfPages; i++) {
-        const el = document.getElementById(`page-wrapper-${i}`);
+      for (let i = 1; i <= totalPages; i++) {
+        const el = document.getElementById(`webtoon-page-${i}`);
         if (el) observer.observe(el);
+      }
+
+      // Scroll to start page
+      setTimeout(() => {
+        const target = document.getElementById(`webtoon-page-${startPage}`);
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+
+    function switchActiveContainer(active) {
+      document.getElementById('container-book').classList.toggle('hidden', active !== 'book');
+      document.getElementById('container-slide').classList.toggle('hidden', active !== 'slide');
+      document.getElementById('container-webtoon').classList.toggle('hidden', active !== 'webtoon');
+    }
+
+    // Helper: Render high-res PDF page into canvas
+    async function renderPdfPageOnCanvas(pageNum, canvasId) {
+      if (!pdfDocument || pageNum < 1 || pageNum > totalPages) return;
+      const canvas = document.getElementById(canvasId);
+      if (!canvas || canvas.dataset.rendered === 'true') return;
+
+      try {
+        const page = await pdfDocument.getPage(pageNum);
+        const dpr = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale: 1.5 * dpr });
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        canvas.dataset.rendered = 'true';
+      } catch (err) {
+        console.warn(`PDF render page ${pageNum} error:`, err);
       }
     }
 
-    async function renderSinglePage(pageNum) {
-      currentPdfPage = pageNum;
-      updatePageIndicator(pageNum);
-      await renderPageCanvas(pageNum, 'canvas-single-page');
-      if (currentComic && currentChapterObj) {
-        saveProgress(currentComic.id, currentChapterObj.id, currentChapterObj.name, pageNum);
+    // --- NAVIGATION TAP ZONES (Mihon Tap Scheme) ---
+    function onTapZone(zone) {
+      if (zone === 'center') {
+        toggleControls();
+        return;
       }
+
+      const isRtl = readingMode === 'book-rtl' || readingMode === 'slide-rtl';
+
+      if (readingMode === 'webtoon') {
+        // Vertical scroll up/down
+        const container = document.getElementById('container-webtoon');
+        const scrollAmount = window.innerHeight * 0.75;
+        if (zone === 'left') {
+          container.scrollBy({ top: -scrollAmount, behavior: 'smooth' });
+        } else {
+          container.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+        }
+        return;
+      }
+
+      // In RTL (Manga): Left = Forward/Next, Right = Backward/Prev
+      // In LTR (Western): Right = Forward/Next, Left = Backward/Prev
+      if (isRtl) {
+        if (zone === 'left') flipPageForward();
+        else flipPageBackward();
+      } else {
+        if (zone === 'right') flipPageForward();
+        else flipPageBackward();
+      }
+    }
+
+    function flipPageForward() {
+      if (currentPage >= totalPages) {
+        showEndChapterOverlay();
+        return;
+      }
+
+      if (readingMode === 'book-rtl' || readingMode === 'book-ltr') {
+        if (pageFlipInstance) {
+          pageFlipInstance.flipNext();
+        }
+      } else if (readingMode === 'slide-rtl' || readingMode === 'slide-ltr') {
+        jumpToSlide(currentPage + 1);
+        playPaperRustleSound();
+      } else if (readingMode === 'webtoon') {
+        const next = document.getElementById(`webtoon-page-${currentPage + 1}`);
+        if (next) next.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function flipPageBackward() {
+      if (currentPage <= 1) {
+        return;
+      }
+
+      if (readingMode === 'book-rtl' || readingMode === 'book-ltr') {
+        if (pageFlipInstance) {
+          pageFlipInstance.flipPrev();
+        }
+      } else if (readingMode === 'slide-rtl' || readingMode === 'slide-ltr') {
+        jumpToSlide(currentPage - 1);
+        playPaperRustleSound();
+      } else if (readingMode === 'webtoon') {
+        const prev = document.getElementById(`webtoon-page-${currentPage - 1}`);
+        if (prev) prev.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function onSeekbarInput(val) {
+      const page = parseInt(val, 10);
+      if (readingMode === 'book-rtl' || readingMode === 'book-ltr') {
+        if (pageFlipInstance) {
+          pageFlipInstance.turnToPage(page - 1);
+        }
+      } else if (readingMode === 'slide-rtl' || readingMode === 'slide-ltr') {
+        jumpToSlide(page);
+      } else if (readingMode === 'webtoon') {
+        const el = document.getElementById(`webtoon-page-${page}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function setupSeekbar(total, start) {
+      const bar = document.getElementById('reader-seekbar');
+      bar.min = 1;
+      bar.max = total;
+      bar.value = start;
     }
 
     function updatePageIndicator(page) {
-      document.getElementById('reader-page-indicator').textContent = `${page} / ${totalPdfPages}`;
+      document.getElementById('reader-page-counter').textContent = `${page} / ${totalPages}`;
+      document.getElementById('hud-page').textContent = `${page} / ${totalPages}`;
       document.getElementById('reader-seekbar').value = page;
+
       document.getElementById('btn-prev-page').disabled = page <= 1;
-      document.getElementById('btn-next-page').disabled = page >= totalPdfPages;
+      document.getElementById('btn-next-page').disabled = page >= totalPages;
     }
 
-    function scrollToPage(pageNum) {
-      const el = document.getElementById(`page-wrapper-${pageNum}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth' });
-      }
-    }
-
-    function onSeek(val) {
-      const page = parseInt(val, 10);
-      if (readerMode === 'scroll') {
-        scrollToPage(page);
-      } else {
-        renderSinglePage(page);
-      }
-    }
-
-    function prevPage() {
-      if (currentPdfPage > 1) {
-        onSeek(currentPdfPage - 1);
-      }
-    }
-
-    function nextPage() {
-      if (currentPdfPage < totalPdfPages) {
-        onSeek(currentPdfPage + 1);
-      }
-    }
-
-    function toggleReaderControls() {
-      controlsVisible = !controlsVisible;
+    function toggleControls(forceState = null) {
+      controlsVisible = forceState !== null ? forceState : !controlsVisible;
       const top = document.getElementById('reader-topbar');
       const bottom = document.getElementById('reader-bottombar');
+      const hud = document.getElementById('reader-floating-hud');
+
       if (controlsVisible) {
         top.style.transform = 'translateY(0)';
         bottom.style.transform = 'translateY(0)';
+        hud.style.opacity = '0';
       } else {
         top.style.transform = 'translateY(-100%)';
         bottom.style.transform = 'translateY(100%)';
+        hud.style.opacity = '1';
       }
     }
 
-    function toggleReaderMode() {
-      readerMode = readerMode === 'scroll' ? 'paged' : 'scroll';
-      document.getElementById('reader-mode-label').textContent = readerMode === 'scroll' ? 'Scroll' : 'Single';
-      initReaderView(currentPdfPage);
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      const reader = document.getElementById('view-reader');
+      if (reader.classList.contains('hidden')) return;
+
+      const isRtl = readingMode === 'book-rtl' || readingMode === 'slide-rtl';
+      if (e.key === 'ArrowLeft') {
+        if (isRtl) flipPageForward();
+        else flipPageBackward();
+      } else if (e.key === 'ArrowRight' || e.key === ' ') {
+        if (isRtl) flipPageBackward();
+        else flipPageForward();
+      } else if (e.key === 'Escape') {
+        closeReader();
+      }
+    });
+
+    // --- READING MODE SWITCHER ---
+    function openModeModal() {
+      document.getElementById('mode-modal').classList.remove('hidden');
+      updateModeUI();
+    }
+
+    function closeModeModal(e) {
+      document.getElementById('mode-modal').classList.add('hidden');
+    }
+
+    function selectReadingMode(mode) {
+      readingMode = mode;
+      localStorage.setItem('komik_reading_mode', mode);
+      updateModeUI();
+      closeModeModal();
+
+      // Re-initialize reader with new mode
+      if (activeChapter && chapterPagesData) {
+        const savedPage = currentPage;
+        destroyCurrentReader();
+        if (chapterPagesData.format === 'images') {
+          initReaderWithImages(chapterPagesData.pages, savedPage);
+        } else {
+          initReaderWithPdf(chapterPagesData.streamUrl, savedPage);
+        }
+      }
+    }
+
+    function updateModeUI() {
+      const modeLabels = {
+        'book-rtl': 'Buku 3D (RTL)',
+        'book-ltr': 'Buku 3D (LTR)',
+        'slide-rtl': 'Slide (RTL)',
+        'slide-ltr': 'Slide (LTR)',
+        'webtoon': 'Webtoon'
+      };
+      document.getElementById('current-mode-label').textContent = modeLabels[readingMode] || 'Buku 3D';
+
+      document.querySelectorAll('.mode-opt').forEach(el => {
+        el.classList.remove('border-brand-500', 'bg-brand-500/10');
+        el.classList.add('border-slate-800', 'bg-slate-900/60');
+      });
+
+      const activeEl = document.getElementById(`opt-${readingMode}`);
+      if (activeEl) {
+        activeEl.classList.remove('border-slate-800', 'bg-slate-900/60');
+        activeEl.classList.add('border-brand-500', 'bg-brand-500/10');
+      }
+    }
+
+    function toggleSound() {
+      isSoundEnabled = !isSoundEnabled;
+      localStorage.setItem('komik_sound_enabled', isSoundEnabled ? '1' : '0');
+      updateSoundUI();
+      if (isSoundEnabled) playPaperRustleSound();
+    }
+
+    function updateSoundUI() {
+      const icon = document.getElementById('icon-sound');
+      const btn = document.getElementById('btn-sound');
+      const toggleBtn = document.getElementById('toggle-sound-btn');
+      const circle = document.getElementById('toggle-sound-circle');
+
+      if (isSoundEnabled) {
+        icon.setAttribute('data-lucide', 'volume-2');
+        btn.classList.add('text-brand-400');
+        btn.classList.remove('text-slate-500');
+        toggleBtn.classList.remove('bg-slate-700');
+        toggleBtn.classList.add('bg-brand-600');
+        circle.style.transform = 'translateX(20px)';
+      } else {
+        icon.setAttribute('data-lucide', 'volume-x');
+        btn.classList.remove('text-brand-400');
+        btn.classList.add('text-slate-500');
+        toggleBtn.classList.remove('bg-brand-600');
+        toggleBtn.classList.add('bg-slate-700');
+        circle.style.transform = 'translateX(2px)';
+      }
+      lucide.createIcons();
+    }
+
+    // --- CHAPTER TRANSITION & DRAWER ---
+    function loadNextChapter() {
+      if (activeChapterIndex < currentChapters.length - 1) {
+        const next = currentChapters[activeChapterIndex + 1];
+        launchReader(next, 1);
+      } else {
+        alert('Ini adalah chapter terakhir!');
+      }
+    }
+
+    function loadPrevChapter() {
+      if (activeChapterIndex > 0) {
+        const prev = currentChapters[activeChapterIndex - 1];
+        launchReader(prev, 1);
+      } else {
+        alert('Ini adalah chapter pertama!');
+      }
+    }
+
+    function showEndChapterOverlay() {
+      const overlay = document.getElementById('end-chapter-overlay');
+      overlay.classList.remove('hidden');
+      document.getElementById('end-chapter-curr-name').textContent = `Kamu telah menyelesaikan ${activeChapter.name}.`;
+
+      const hasNext = activeChapterIndex < currentChapters.length - 1;
+      const nextBox = document.getElementById('next-chapter-box');
+      const btnNext = document.getElementById('btn-next-chapter');
+
+      if (hasNext) {
+        const next = currentChapters[activeChapterIndex + 1];
+        nextBox.classList.remove('hidden');
+        document.getElementById('next-chapter-title').textContent = next.name;
+        btnNext.classList.remove('hidden');
+      } else {
+        nextBox.classList.add('hidden');
+        btnNext.classList.add('hidden');
+      }
+      lucide.createIcons();
+    }
+
+    function closeEndChapterOverlay() {
+      document.getElementById('end-chapter-overlay').classList.add('hidden');
+    }
+
+    function toggleChapterDrawer(open = null) {
+      const drawer = document.getElementById('chapter-drawer');
+      const isOpen = !drawer.classList.contains('translate-x-full');
+      const shouldOpen = open !== null ? open : !isOpen;
+
+      if (shouldOpen) {
+        drawer.classList.remove('translate-x-full');
+      } else {
+        drawer.classList.add('translate-x-full');
+      }
+    }
+
+    function renderChapterDrawer() {
+      const list = document.getElementById('drawer-chapters-list');
+      document.getElementById('drawer-comic-title').textContent = currentComic ? currentComic.title : '';
+      list.innerHTML = currentChapters.map((ch, idx) => {
+        const isActive = activeChapter && ch.id === activeChapter.id;
+        return `
+          <div onclick="launchReader(currentChapters[${idx}], 1); toggleChapterDrawer(false);"
+               class="p-2.5 rounded-xl cursor-pointer text-xs flex items-center justify-between transition ${isActive ? 'bg-brand-600 text-white font-bold shadow-md' : 'bg-slate-800/60 hover:bg-slate-800 text-slate-300'}">
+            <span class="truncate">${ch.name}</span>
+            ${isActive ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}
+          </div>
+        `;
+      }).join('');
+      lucide.createIcons();
     }
 
     function closeReader() {
       document.getElementById('view-reader').classList.add('hidden');
-      document.getElementById('pages-container').innerHTML = '';
-      currentPdfDoc = null;
+      destroyCurrentReader();
       if (currentComic) {
         checkResumeButton(currentComic.id);
+      }
+    }
+
+    // --- MINIMAL FLOATING HUD INFO ---
+    function startHUDClock() {
+      function update() {
+        const d = new Date();
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const clockEl = document.getElementById('hud-clock');
+        if (clockEl) clockEl.textContent = `${hh}:${mm}`;
+      }
+      update();
+      setInterval(update, 10000);
+
+      // Battery status if available
+      if ('getBattery' in navigator) {
+        navigator.getBattery().then(batt => {
+          const battBox = document.getElementById('hud-battery');
+          const battVal = document.getElementById('hud-battery-val');
+          if (battBox && battVal) {
+            battBox.classList.remove('hidden');
+            battVal.textContent = `${Math.round(batt.level * 100)}%`;
+            batt.addEventListener('levelchange', () => {
+              battVal.textContent = `${Math.round(batt.level * 100)}%`;
+            });
+          }
+        }).catch(() => {});
       }
     }
 
