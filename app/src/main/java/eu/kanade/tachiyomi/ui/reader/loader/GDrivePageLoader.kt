@@ -10,10 +10,14 @@ import eu.kanade.tachiyomi.source.gdrive.GDriveSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import mihon.core.archive.ArchiveReader
+import tachiyomi.core.common.util.system.ImageUtil
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.URLDecoder
 
 internal class GDrivePageLoader(
@@ -26,6 +30,7 @@ internal class GDrivePageLoader(
 
     private var pfd: ParcelFileDescriptor? = null
     private var pdfRenderer: PdfRenderer? = null
+    private var archiveReader: ArchiveReader? = null
 
     override suspend fun getPages(): List<ReaderPage> = withContext(Dispatchers.IO) {
         val chapterUrl = chapter.chapter.url // format: folderId/fileId/fileName
@@ -41,22 +46,63 @@ internal class GDrivePageLoader(
             "chapter.pdf"
         }
 
-        val pdfFile = source.getOrDownloadPdf(fileId, fileName)
-        val descriptor = ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
+        val downloadedFile = source.getOrDownloadFile(fileId, fileName)
+        val descriptor = ParcelFileDescriptor.open(downloadedFile, ParcelFileDescriptor.MODE_READ_ONLY)
         pfd = descriptor
 
-        val renderer = PdfRenderer(descriptor)
-        pdfRenderer = renderer
+        if (isPdf(downloadedFile, fileName)) {
+            val renderer = PdfRenderer(descriptor)
+            pdfRenderer = renderer
 
-        val count = renderer.pageCount
-        (0 until count).map { index ->
-            ReaderPage(index).apply {
-                this.chapter = this@GDrivePageLoader.chapter
-                stream = {
-                    renderPageToStream(index)
+            val count = renderer.pageCount
+            (0 until count).map { index ->
+                ReaderPage(index).apply {
+                    this.chapter = this@GDrivePageLoader.chapter
+                    stream = {
+                        renderPageToStream(index)
+                    }
+                    status = Page.State.Ready
                 }
-                status = Page.State.Ready
             }
+        } else {
+            val reader = ArchiveReader(descriptor)
+            archiveReader = reader
+
+            val entries = reader.useEntries { entriesSequence ->
+                entriesSequence
+                    .filter { it.isFile && ImageUtil.isImage(it.name) { reader.getInputStream(it.name)!! } }
+                    .sortedWith { f1, f2 -> f1.name.compareToCaseInsensitiveNaturalOrder(f2.name) }
+                    .map { it.name }
+                    .toList()
+            }
+            entries.mapIndexed { index, entryName ->
+                ReaderPage(index).apply {
+                    this.chapter = this@GDrivePageLoader.chapter
+                    stream = {
+                        reader.getInputStream(entryName)!!
+                    }
+                    status = Page.State.Ready
+                }
+            }
+        }
+    }
+
+    private fun isPdf(file: File, fileName: String): Boolean {
+        if (fileName.endsWith(".pdf", ignoreCase = true)) return true
+        if (fileName.endsWith(".cbz", ignoreCase = true) ||
+            fileName.endsWith(".cbr", ignoreCase = true) ||
+            fileName.endsWith(".zip", ignoreCase = true) ||
+            fileName.endsWith(".rar", ignoreCase = true)) {
+            return false
+        }
+        return try {
+            file.inputStream().use { input ->
+                val header = ByteArray(4)
+                val read = input.read(header)
+                read >= 4 && header[0] == '%'.code.toByte() && header[1] == 'P'.code.toByte() && header[2] == 'D'.code.toByte() && header[3] == 'F'.code.toByte()
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -89,9 +135,13 @@ internal class GDrivePageLoader(
             pdfRenderer?.close()
         } catch (_: Exception) {}
         try {
+            archiveReader?.close()
+        } catch (_: Exception) {}
+        try {
             pfd?.close()
         } catch (_: Exception) {}
         pdfRenderer = null
+        archiveReader = null
         pfd = null
     }
 }
