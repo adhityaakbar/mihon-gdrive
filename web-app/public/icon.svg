@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="128" fill="url(#bg_grad)" />
+  <defs>
+    <linearGradient id="bg_grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#1e1b4b" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#000" flood-opacity="0.4" />
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <!-- Book Left -->
+    <path d="M256 160C224 128 160 128 112 128C96 128 80 144 80 160V384C80 392 88 400 96 400C144 400 208 408 256 432V160Z" fill="#ffffff" />
+    <!-- Book Right -->
+    <path d="M256 160C288 128 352 128 400 128C416 128 432 144 432 160V384C432 392 424 400 416 400C368 400 304 408 256 432V160Z" fill="#e0e7ff" />
+    <!-- Spine Line -->
+    <line x1="256" y1="160" x2="256" y2="432" stroke="#4f46e5" stroke-width="8" stroke-linecap="round" />
+  </g>
+</svg>

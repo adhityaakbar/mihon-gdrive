@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Komik Aneta — Google Drive Comic Reader</title>
+  
+  <!-- iOS PWA Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Komik Aneta">
+  <meta name="theme-color" content="#090d16">
+
+  <!-- Favicon & Icons -->
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <link rel="manifest" href="/manifest.json">
+
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS & Lucide Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- PDF.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+
+  <!-- JSZip CDN for CBZ/ZIP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Safe area padding for notch & home indicator */
+    body {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 9999px;
+    }
+    /* Hide scrollbar for reader */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased overflow-x-hidden selection:bg-brand-500 selection:text-white">
+
+  <!-- Top Sticky Header -->
+  <header id="main-header" class="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 transition-all duration-300">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      
+      <!-- Back button (visible when not in catalog) -->
+      <button id="btn-back" class="hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 transition active:scale-95" onclick="navigateBack()">
+        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Logo & App Title -->
+      <div id="header-brand" class="flex items-center gap-2.5 cursor-pointer" onclick="showCatalogView()">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
+          <i data-lucide="book-open" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-1.5 leading-tight">
+            Komik Aneta
+            <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 border border-brand-500/30">iOS PWA</span>
+          </h1>
+          <p id="header-subtitle" class="text-xs text-slate-400">Google Drive Reader</p>
+        </div>
+      </div>
+
+      <!-- Search Input in Header (Catalog only) -->
+      <div id="header-search" class="flex-1 max-w-md hidden sm:block relative">
+        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+        <input type="text" id="comic-search" placeholder="Cari komik (Conan, Yaiba, Tintin...)" 
+               class="w-full pl-10 pr-4 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-sm placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 text-white transition"
+               oninput="filterComics(this.value)">
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center gap-2">
+        <button onclick="refreshCatalog()" title="Refresh Koleksi" class="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition active:scale-95">
+          <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mobile Search Row -->
+    <div id="mobile-search-row" class="sm:hidden px-4 pb-3">
+      <div class="relative">
+        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+        <input type="text" placeholder="Cari komik..." 
+               class="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-sm placeholder-slate-500 text-white focus:outline-none focus:border-brand-500"
+               oninput="filterComics(this.value)">
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= VIEW 1: CATALOG ================= -->
+  <main id="view-catalog" class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 py-6 w-full">
+    
+    <!-- Hero / Status Banner -->
+    <div class="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2 text-xs font-semibold text-brand-400 mb-1">
+          <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          FOLDER GOOGLE DRIVE AKTIF
+        </div>
+        <h2 id="catalog-title" class="text-lg sm:text-xl font-bold text-white">Memuat Koleksi Komik...</h2>
+        <p id="catalog-count" class="text-xs sm:text-sm text-slate-400 mt-0.5">Menghubungkan ke Google Drive...</p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button onclick="promptCustomFolder()" class="text-xs px-3 py-2 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-300 hover:text-white hover:bg-slate-700 transition flex items-center gap-1.5 active:scale-95">
+          <i data-lucide="folder-cog" class="w-4 h-4"></i>
+          Ganti Link Folder
+        </button>
+      </div>
+    </div>
+
+    <!-- Loading Skeleton -->
+    <div id="catalog-loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+      <!-- Skeletons generated by JS -->
+    </div>
+
+    <!-- Empty State -->
+    <div id="catalog-empty" class="hidden text-center py-20">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500">
+        <i data-lucide="folder-search" class="w-8 h-8"></i>
+      </div>
+      <h3 class="text-base font-semibold text-slate-200">Tidak ada komik ditemukan</h3>
+      <p class="text-xs text-slate-400 mt-1">Coba kata kunci lain atau periksa koneksi Google Drive.</p>
+    </div>
+
+    <!-- Comics Grid -->
+    <div id="comics-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+      <!-- Cards rendered by JS -->
+    </div>
+  </main>
+
+  <!-- ================= VIEW 2: COMIC DETAIL ================= -->
+  <main id="view-detail" class="hidden flex-1 max-w-4xl mx-auto px-4 sm:px-6 py-6 w-full">
+    <div class="p-5 sm:p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl mb-6">
+      <div class="flex flex-col sm:flex-row gap-5 items-start">
+        <!-- Cover Thumbnail -->
+        <div class="w-32 sm:w-40 aspect-[3/4] rounded-xl overflow-hidden bg-slate-800 flex-shrink-0 border border-slate-700/60 shadow-md">
+          <img id="detail-cover" class="w-full h-full object-cover" src="" alt="Cover" onerror="this.src='/icon.svg'">
+        </div>
+        <!-- Info -->
+        <div class="flex-1 min-w-0">
+          <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-brand-500/20 text-brand-400 border border-brand-500/30">Google Drive Comic</span>
+          <h2 id="detail-title" class="text-xl sm:text-2xl font-bold text-white mt-1.5 break-words">Judul Komik</h2>
+          <p id="detail-folder-info" class="text-xs text-slate-400 mt-1">Folder ID: -</p>
+          
+          <div class="mt-4 flex flex-wrap gap-2.5 items-center">
+            <button id="btn-resume" class="hidden px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-brand-500/25 transition active:scale-95" onclick="resumeReading()">
+              <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+              Lanjut Baca
+            </button>
+            <span id="detail-chapter-count" class="text-xs px-3 py-2 rounded-xl bg-slate-800 text-slate-300 border border-slate-700/60">
+              0 Chapter
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chapter List Header -->
+    <div class="flex items-center justify-between mb-3 px-1">
+      <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400">Daftar Chapter / Volume</h3>
+      <button onclick="toggleChapterSort()" class="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1">
+        <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i>
+        <span id="sort-order-label">Terbaru ke Terlama</span>
+      </button>
+    </div>
+
+    <!-- Chapter Loading -->
+    <div id="detail-loading" class="space-y-2 py-8 text-center text-slate-500 text-sm">
+      <i data-lucide="loader" class="w-6 h-6 animate-spin mx-auto text-brand-500 mb-2"></i>
+      Memuat chapter dari Google Drive...
+    </div>
+
+    <!-- Chapter Items -->
+    <div id="chapters-list" class="space-y-2">
+      <!-- Chapters rendered by JS -->
+    </div>
+  </main>
+
+  <!-- ================= VIEW 3: FULLSCREEN READER ================= -->
+  <div id="view-reader" class="hidden fixed inset-0 z-50 bg-black flex flex-col overflow-hidden">
+    
+    <!-- Reader Top Bar -->
+    <div id="reader-topbar" class="absolute top-0 inset-x-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-2.5 flex items-center justify-between gap-3 transition-transform duration-300">
+      <button onclick="closeReader()" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition active:scale-95">
+        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+      </button>
+
+      <div class="flex-1 min-w-0 text-center">
+        <h4 id="reader-chapter-title" class="text-xs sm:text-sm font-semibold text-white truncate">Chapter</h4>
+        <p id="reader-comic-title" class="text-[10px] text-slate-400 truncate">Komik</p>
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <button onclick="toggleReaderMode()" id="btn-mode-toggle" class="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300 hover:text-white flex items-center gap-1">
+          <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+          <span id="reader-mode-label">Scroll</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Reader Main Content Container -->
+    <div id="reader-container" class="flex-1 w-full h-full overflow-y-auto overflow-x-hidden relative flex flex-col items-center custom-scrollbar" onclick="toggleReaderControls()">
+      <!-- Canvas / Pages injected here -->
+      <div id="reader-spinner" class="m-auto text-center py-20 text-slate-400">
+        <i data-lucide="loader" class="w-8 h-8 animate-spin mx-auto text-brand-500 mb-3"></i>
+        <p class="text-sm font-medium" id="reader-status-text">Mengunduh PDF & Membaca halaman...</p>
+        <p class="text-xs text-slate-500 mt-1">Halaman dirender langsung di browser Anda</p>
+      </div>
+
+      <div id="pages-container" class="w-full flex flex-col items-center gap-2 py-16">
+        <!-- Canvas pages -->
+      </div>
+    </div>
+
+    <!-- Reader Bottom Bar -->
+    <div id="reader-bottombar" class="absolute bottom-0 inset-x-0 z-30 bg-slate-950/90 backdrop-blur-md border-t border-slate-800/80 px-4 py-3 flex flex-col gap-2 transition-transform duration-300">
+      <div class="flex items-center gap-3">
+        <button onclick="prevPage()" class="p-2 rounded-lg bg-slate-900 text-slate-300 hover:text-white disabled:opacity-30" id="btn-prev-page">
+          <i data-lucide="chevron-left" class="w-5 h-5"></i>
+        </button>
+
+        <input type="range" id="reader-seekbar" min="1" max="1" value="1" 
+               class="flex-1 accent-indigo-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+               oninput="onSeek(this.value)">
+
+        <button onclick="nextPage()" class="p-2 rounded-lg bg-slate-900 text-slate-300 hover:text-white disabled:opacity-30" id="btn-next-page">
+          <i data-lucide="chevron-right" class="w-5 h-5"></i>
+        </button>
+
+        <span id="reader-page-indicator" class="text-xs font-mono font-semibold text-slate-300 min-w-[65px] text-right">
+          0 / 0
+        </span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- APPLICATION LOGIC SCRIPT -->
+  <script>
+    // App State
+    let currentFolderId = "1m6tcNvSysd0kE2x-33dxGtkXlXVJsYMB";
+    let allComics = [];
+    let currentComic = null;
+    let currentChapters = [];
+    let isSortDesc = true;
+
+    // Reader State
+    let currentPdfDoc = null;
+    let totalPdfPages = 0;
+    let currentPdfPage = 1;
+    let readerMode = 'scroll'; // 'scroll' or 'paged'
+    let controlsVisible = true;
+    let renderedPages = new Set();
+    let currentChapterObj = null;
+
+    // Initialize Lucide icons
+    document.addEventListener("DOMContentLoaded", () => {
+      lucide.createIcons();
+      loadCatalog();
+    });
+
+    // --- NAVIGATION ---
+    function showCatalogView() {
+      document.getElementById('view-catalog').classList.remove('hidden');
+      document.getElementById('view-detail').classList.add('hidden');
+      document.getElementById('view-reader').classList.add('hidden');
+      document.getElementById('btn-back').classList.add('hidden');
+      document.getElementById('header-subtitle').textContent = "Google Drive Reader";
+      window.scrollTo(0, 0);
+    }
+
+    function showDetailView(comic) {
+      currentComic = comic;
+      document.getElementById('view-catalog').classList.add('hidden');
+      document.getElementById('view-detail').classList.remove('hidden');
+      document.getElementById('view-reader').classList.add('hidden');
+      document.getElementById('btn-back').classList.remove('hidden');
+
+      document.getElementById('detail-title').textContent = comic.title;
+      document.getElementById('detail-cover').src = comic.cover || '/icon.svg';
+      document.getElementById('detail-folder-info').textContent = `Folder ID: ${comic.id}`;
+      document.getElementById('header-subtitle').textContent = comic.title;
+
+      checkResumeButton(comic.id);
+      loadChapters(comic.id);
+      window.scrollTo(0, 0);
+    }
+
+    function navigateBack() {
+      showCatalogView();
+    }
+
+    // --- CATALOG ---
+    async function loadCatalog(refresh = false) {
+      const loadingEl = document.getElementById('catalog-loading');
+      const gridEl = document.getElementById('comics-grid');
+      const emptyEl = document.getElementById('catalog-empty');
+      const countEl = document.getElementById('catalog-count');
+
+      loadingEl.innerHTML = Array(12).fill(0).map(() => `
+        <div class="animate-pulse bg-slate-900 rounded-xl overflow-hidden border border-slate-800/80">
+          <div class="aspect-[3/4] bg-slate-800"></div>
+          <div class="p-2.5 space-y-1.5">
+            <div class="h-3.5 bg-slate-800 rounded w-4/5"></div>
+            <div class="h-2.5 bg-slate-800/60 rounded w-2/5"></div>
+          </div>
+        </div>
+      `).join('');
+      loadingEl.classList.remove('hidden');
+      gridEl.innerHTML = '';
+      emptyEl.classList.add('hidden');
+
+      try {
+        const refreshParam = refresh ? '&refresh=1' : '';
+        const res = await fetch(`/api/comics?folderId=${currentFolderId}${refreshParam}`);
+        const data = await res.json();
+
+        loadingEl.classList.add('hidden');
+        if (data.success && data.comics.length > 0) {
+          allComics = data.comics;
+          document.getElementById('catalog-title').textContent = `Koleksi Komik (${allComics.length} Judul)`;
+          countEl.textContent = `${allComics.length} komik ditemukan di Google Drive`;
+          renderComics(allComics);
+        } else {
+          emptyEl.classList.remove('hidden');
+          countEl.textContent = 'Tidak ada komik ditemukan';
+        }
+      } catch (err) {
+        console.error('Error loading catalog:', err);
+        loadingEl.classList.add('hidden');
+        emptyEl.classList.remove('hidden');
+        countEl.textContent = 'Gagal memuat katalog: ' + err.message;
+      }
+    }
+
+    function refreshCatalog() {
+      loadCatalog(true);
+    }
+
+    function renderComics(comics) {
+      const grid = document.getElementById('comics-grid');
+      grid.innerHTML = comics.map(c => `
+        <div onclick='openComic(${JSON.stringify(c).replace(/'/g, "&apos;")})'
+             class="group cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 rounded-2xl overflow-hidden border border-slate-800/80 hover:border-slate-700 transition duration-200 transform active:scale-95 shadow-lg flex flex-col">
+          <div class="aspect-[3/4] w-full bg-slate-800 relative overflow-hidden">
+            <img src="${c.cover || '/icon.svg'}" alt="${c.title}" 
+                 loading="lazy"
+                 class="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                 onerror="this.src='/icon.svg'">
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-60"></div>
+          </div>
+          <div class="p-3 flex-1 flex flex-col justify-between">
+            <h3 class="text-xs sm:text-sm font-bold text-slate-100 group-hover:text-brand-400 line-clamp-2 transition leading-tight">
+              ${c.title}
+            </h3>
+            <span class="text-[10px] text-slate-500 font-medium mt-1">Google Drive</span>
+          </div>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function filterComics(keyword) {
+      const q = keyword.toLowerCase().trim();
+      if (!q) {
+        renderComics(allComics);
+        return;
+      }
+      const filtered = allComics.filter(c => c.title.toLowerCase().includes(q));
+      renderComics(filtered);
+      if (filtered.length === 0) {
+        document.getElementById('catalog-empty').classList.remove('hidden');
+      } else {
+        document.getElementById('catalog-empty').classList.add('hidden');
+      }
+    }
+
+    function openComic(comic) {
+      showDetailView(comic);
+    }
+
+    // --- CHAPTERS ---
+    async function loadChapters(comicId) {
+      const loading = document.getElementById('detail-loading');
+      const list = document.getElementById('chapters-list');
+      loading.classList.remove('hidden');
+      list.innerHTML = '';
+
+      try {
+        const res = await fetch(`/api/comics/${comicId}/chapters`);
+        const data = await res.json();
+        loading.classList.add('hidden');
+
+        if (data.success && data.chapters.length > 0) {
+          currentChapters = data.chapters;
+          document.getElementById('detail-chapter-count').textContent = `${currentChapters.length} Chapter`;
+          renderChapters();
+        } else {
+          list.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs">Belum ada file chapter komik di folder ini.</div>`;
+        }
+      } catch (err) {
+        loading.classList.add('hidden');
+        list.innerHTML = `<div class="p-6 text-center text-red-400 text-xs">Gagal memuat chapter: ${err.message}</div>`;
+      }
+    }
+
+    function renderChapters() {
+      const list = document.getElementById('chapters-list');
+      const sorted = [...currentChapters].sort((a, b) => {
+        const cmp = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        return isSortDesc ? -cmp : cmp;
+      });
+
+      list.innerHTML = sorted.map(ch => {
+        const sizeMb = ch.size ? (ch.size / (1024 * 1024)).toFixed(1) + ' MB' : '';
+        const extBadge = ch.extension.toUpperCase();
+        return `
+          <div onclick='openReader(${JSON.stringify(ch).replace(/'/g, "&apos;")})'
+               class="p-3.5 sm:p-4 rounded-xl bg-slate-900 hover:bg-slate-800/80 border border-slate-800/80 hover:border-brand-500/40 flex items-center justify-between gap-3 cursor-pointer transition active:scale-98 group">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-8 h-8 rounded-lg bg-brand-500/10 text-brand-400 border border-brand-500/20 flex items-center justify-center flex-shrink-0 group-hover:bg-brand-500 group-hover:text-white transition">
+                <i data-lucide="file-text" class="w-4 h-4"></i>
+              </div>
+              <div class="min-w-0">
+                <h4 class="text-xs sm:text-sm font-semibold text-slate-200 group-hover:text-brand-300 truncate">${ch.name}</h4>
+                <p class="text-[10px] text-slate-500 truncate">${ch.fullName} ${sizeMb ? '• ' + sizeMb : ''}</p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                ${extBadge}
+              </span>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500 group-hover:text-white transition"></i>
+            </div>
+          </div>
+        `;
+      }).join('');
+      lucide.createIcons();
+    }
+
+    function toggleChapterSort() {
+      isSortDesc = !isSortDesc;
+      document.getElementById('sort-order-label').textContent = isSortDesc ? "Terbaru ke Terlama" : "Terlama ke Terbaru";
+      renderChapters();
+    }
+
+    // --- RESUME LOGIC ---
+    function checkResumeButton(comicId) {
+      const btn = document.getElementById('btn-resume');
+      const progress = getSavedProgress(comicId);
+      if (progress && progress.chapterId) {
+        btn.classList.remove('hidden');
+        btn.innerHTML = `<i data-lucide="play" class="w-4 h-4 fill-white"></i> Lanjut: ${progress.chapterName || 'Chapter'} (Hal ${progress.page || 1})`;
+        lucide.createIcons();
+      } else {
+        btn.classList.add('hidden');
+      }
+    }
+
+    function resumeReading() {
+      if (!currentComic) return;
+      const progress = getSavedProgress(currentComic.id);
+      if (progress && progress.chapterId) {
+        const targetChapter = currentChapters.find(ch => ch.id === progress.chapterId) || currentChapters[0];
+        if (targetChapter) {
+          openReader(targetChapter, progress.page || 1);
+        }
+      }
+    }
+
+    function saveProgress(comicId, chapterId, chapterName, page) {
+      try {
+        const key = `progress_${comicId}`;
+        localStorage.setItem(key, JSON.stringify({
+          chapterId,
+          chapterName,
+          page,
+          timestamp: Date.now()
+        }));
+      } catch (_) {}
+    }
+
+    function getSavedProgress(comicId) {
+      try {
+        return JSON.parse(localStorage.getItem(`progress_${comicId}`));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    // --- READER IMPLEMENTATION ---
+    async function openReader(chapter, startPage = 1) {
+      currentChapterObj = chapter;
+      const reader = document.getElementById('view-reader');
+      const spinner = document.getElementById('reader-spinner');
+      const pagesContainer = document.getElementById('pages-container');
+      const statusText = document.getElementById('reader-status-text');
+
+      reader.classList.remove('hidden');
+      spinner.classList.remove('hidden');
+      pagesContainer.innerHTML = '';
+      statusText.textContent = `Mengunduh & Memuat ${chapter.name}...`;
+
+      document.getElementById('reader-chapter-title').textContent = chapter.name;
+      document.getElementById('reader-comic-title').textContent = currentComic ? currentComic.title : '';
+
+      renderedPages.clear();
+      currentPdfDoc = null;
+      totalPdfPages = 0;
+      currentPdfPage = startPage;
+
+      try {
+        const streamUrl = chapter.streamUrl;
+        
+        // Load PDF using PDF.js
+        const loadingTask = pdfjsLib.getDocument({
+          url: streamUrl,
+          cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+          cMapPacked: true,
+        });
+
+        loadingTask.onProgress = function(progress) {
+          if (progress.total > 0) {
+            const percent = Math.round((progress.loaded / progress.total) * 100);
+            statusText.textContent = `Mengunduh PDF: ${percent}%...`;
+          }
+        };
+
+        const pdf = await loadingTask.promise;
+        currentPdfDoc = pdf;
+        totalPdfPages = pdf.numPages;
+
+        spinner.classList.add('hidden');
+        initReaderView(startPage);
+
+      } catch (err) {
+        console.error('Failed to open PDF:', err);
+        statusText.textContent = `Gagal memuat PDF: ${err.message}`;
+      }
+    }
+
+    function initReaderView(startPage = 1) {
+      const container = document.getElementById('pages-container');
+      container.innerHTML = '';
+
+      document.getElementById('reader-seekbar').max = totalPdfPages;
+      document.getElementById('reader-seekbar').value = startPage;
+      updatePageIndicator(startPage);
+
+      if (readerMode === 'scroll') {
+        // Create placeholders for all pages
+        for (let i = 1; i <= totalPdfPages; i++) {
+          const wrapper = document.createElement('div');
+          wrapper.id = `page-wrapper-${i}`;
+          wrapper.className = 'w-full max-w-3xl flex justify-center min-h-[500px] bg-slate-900/40 rounded-lg overflow-hidden my-1 shadow-md';
+          wrapper.dataset.page = i;
+
+          const canvas = document.createElement('canvas');
+          canvas.id = `canvas-page-${i}`;
+          canvas.className = 'w-full h-auto object-contain';
+          wrapper.appendChild(canvas);
+          container.appendChild(wrapper);
+        }
+
+        setupIntersectionObserver();
+        scrollToPage(startPage);
+      } else {
+        // Paged mode
+        const wrapper = document.createElement('div');
+        wrapper.id = 'single-page-wrapper';
+        wrapper.className = 'w-full max-w-3xl flex justify-center items-center min-h-[80vh]';
+        const canvas = document.createElement('canvas');
+        canvas.id = 'canvas-single-page';
+        canvas.className = 'max-h-[85vh] w-auto max-w-full object-contain shadow-2xl rounded-lg';
+        wrapper.appendChild(canvas);
+        container.appendChild(wrapper);
+
+        renderSinglePage(startPage);
+      }
+    }
+
+    async function renderPageCanvas(pageNum, canvasId) {
+      if (!currentPdfDoc || pageNum < 1 || pageNum > totalPdfPages) return;
+      try {
+        const page = await currentPdfDoc.getPage(pageNum);
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+
+        // Render at device pixel ratio for super sharp Retina display
+        const dpr = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale: 1.5 * dpr });
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        const ctx = canvas.getContext('2d');
+        const renderContext = {
+          canvasContext: ctx,
+          viewport: viewport
+        };
+        await page.render(renderContext).promise;
+        renderedPages.add(pageNum);
+      } catch (err) {
+        console.error(`Error rendering page ${pageNum}:`, err);
+      }
+    }
+
+    function setupIntersectionObserver() {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const pageNum = parseInt(entry.target.dataset.page, 10);
+            if (!renderedPages.has(pageNum)) {
+              renderPageCanvas(pageNum, `canvas-page-${pageNum}`);
+            }
+            currentPdfPage = pageNum;
+            updatePageIndicator(pageNum);
+            if (currentComic && currentChapterObj) {
+              saveProgress(currentComic.id, currentChapterObj.id, currentChapterObj.name, pageNum);
+            }
+          }
+        });
+      }, { rootMargin: '300px 0px 300px 0px', threshold: 0.1 });
+
+      for (let i = 1; i <= totalPdfPages; i++) {
+        const el = document.getElementById(`page-wrapper-${i}`);
+        if (el) observer.observe(el);
+      }
+    }
+
+    async function renderSinglePage(pageNum) {
+      currentPdfPage = pageNum;
+      updatePageIndicator(pageNum);
+      await renderPageCanvas(pageNum, 'canvas-single-page');
+      if (currentComic && currentChapterObj) {
+        saveProgress(currentComic.id, currentChapterObj.id, currentChapterObj.name, pageNum);
+      }
+    }
+
+    function updatePageIndicator(page) {
+      document.getElementById('reader-page-indicator').textContent = `${page} / ${totalPdfPages}`;
+      document.getElementById('reader-seekbar').value = page;
+      document.getElementById('btn-prev-page').disabled = page <= 1;
+      document.getElementById('btn-next-page').disabled = page >= totalPdfPages;
+    }
+
+    function scrollToPage(pageNum) {
+      const el = document.getElementById(`page-wrapper-${pageNum}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function onSeek(val) {
+      const page = parseInt(val, 10);
+      if (readerMode === 'scroll') {
+        scrollToPage(page);
+      } else {
+        renderSinglePage(page);
+      }
+    }
+
+    function prevPage() {
+      if (currentPdfPage > 1) {
+        onSeek(currentPdfPage - 1);
+      }
+    }
+
+    function nextPage() {
+      if (currentPdfPage < totalPdfPages) {
+        onSeek(currentPdfPage + 1);
+      }
+    }
+
+    function toggleReaderControls() {
+      controlsVisible = !controlsVisible;
+      const top = document.getElementById('reader-topbar');
+      const bottom = document.getElementById('reader-bottombar');
+      if (controlsVisible) {
+        top.style.transform = 'translateY(0)';
+        bottom.style.transform = 'translateY(0)';
+      } else {
+        top.style.transform = 'translateY(-100%)';
+        bottom.style.transform = 'translateY(100%)';
+      }
+    }
+
+    function toggleReaderMode() {
+      readerMode = readerMode === 'scroll' ? 'paged' : 'scroll';
+      document.getElementById('reader-mode-label').textContent = readerMode === 'scroll' ? 'Scroll' : 'Single';
+      initReaderView(currentPdfPage);
+    }
+
+    function closeReader() {
+      document.getElementById('view-reader').classList.add('hidden');
+      document.getElementById('pages-container').innerHTML = '';
+      currentPdfDoc = null;
+      if (currentComic) {
+        checkResumeButton(currentComic.id);
+      }
+    }
+
+    function promptCustomFolder() {
+      const urlOrId = prompt("Masukkan Link Folder Google Drive (atau Folder ID):", currentFolderId);
+      if (urlOrId && urlOrId.trim()) {
+        const m = urlOrId.match(/(?:folders\/|id=)([a-zA-Z0-9_-]{15,})/);
+        const folderId = m ? m[1] : urlOrId.trim();
+        currentFolderId = folderId;
+        loadCatalog(true);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "Komik Aneta",
+  "short_name": "Komik",
+  "description": "Google Drive Comic & Manga Reader PWA untuk iOS & Mobile",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

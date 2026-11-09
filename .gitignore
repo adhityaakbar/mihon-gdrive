@@ -13,6 +13,7 @@ build
 # Configuration files
 keystore.properties
 local.properties
+web-app/cache/
 
 # macOS specific files
 .DS_Store
