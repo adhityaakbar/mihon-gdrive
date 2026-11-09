@@ -19,6 +19,7 @@ import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredroundedfilled.ViewList
 import mihon.icons.materialsymbols.roundedfilled.ViewCompact
 import mihon.icons.materialsymbols.roundedfilled.ViewModule
+import mihon.icons.materialsymbols.rounded.Settings
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -85,8 +86,9 @@ fun BrowseSourceToolbar(
                     }
                     if (isConfigurableSource) {
                         add(
-                            AppBar.OverflowAction(
+                            AppBar.Action(
                                 title = stringResource(MR.strings.action_settings),
+                                icon = MaterialSymbols.Rounded.Settings,
                                 onClick = onSettingsClick,
                             ),
                         )

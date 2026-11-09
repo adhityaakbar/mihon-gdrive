@@ -294,7 +294,7 @@ class LocalSource(
         val chapters = fileSystem.getFilesInMangaDirectory(manga.url)
             // Only keep supported formats
             .filterNot { it.name.orEmpty().startsWith('.') }
-            .filter { it.isDirectory || Archive.isSupported(it) || it.extension.equals("epub", true) }
+            .filter { it.isDirectory || Archive.isSupported(it) || it.extension.equals("epub", true) || it.extension.equals("pdf", true) }
             .map { chapterFile ->
                 SChapter.create().apply {
                     url = "${manga.url}/${chapterFile.name}"
@@ -393,6 +393,30 @@ class LocalSource(
                         val entry = epub.getImagesFromPages().firstOrNull()
 
                         entry?.let { coverManager.update(manga, epub.getInputStream(it)!!) }
+                    }
+                }
+                is Format.Pdf -> {
+                    context.contentResolver.openFileDescriptor(format.file.uri, "r")?.use { pfd ->
+                        android.graphics.pdf.PdfRenderer(pfd).use { renderer ->
+                            if (renderer.pageCount > 0) {
+                                renderer.openPage(0).use { page ->
+                                    val bitmap = android.graphics.Bitmap.createBitmap(
+                                        page.width,
+                                        page.height,
+                                        android.graphics.Bitmap.Config.ARGB_8888,
+                                    )
+                                    val canvas = android.graphics.Canvas(bitmap)
+                                    canvas.drawColor(android.graphics.Color.WHITE)
+                                    page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                    val stream = java.io.ByteArrayOutputStream()
+                                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, stream)
+                                    bitmap.recycle()
+                                    coverManager.update(manga, java.io.ByteArrayInputStream(stream.toByteArray()))
+                                }
+                            } else {
+                                null
+                            }
+                        }
                     }
                 }
             }

@@ -20,6 +20,7 @@ import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.repository.StubSourceRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.source.local.LocalSource
+import eu.kanade.tachiyomi.source.gdrive.GDriveSource
 import java.util.concurrent.ConcurrentHashMap
 
 @Inject
@@ -30,6 +31,7 @@ class AndroidSourceManager(
     private val extensionManager: ExtensionManager,
     private val sourceRepository: StubSourceRepository,
     private val localSource: LocalSource,
+    private val gdriveSource: GDriveSource,
     private val downloadManager: Lazy<DownloadManager>,
 ) : SourceManager {
 
@@ -49,7 +51,10 @@ class AndroidSourceManager(
             extensionManager.loadedExtensionsFlow
                 .collectLatest { extensions ->
                     val mutableMap = ConcurrentHashMap<Long, Source>(
-                        mapOf(LocalSource.ID to localSource),
+                        mapOf(
+                            LocalSource.ID to localSource,
+                            GDriveSource.ID to gdriveSource,
+                        ),
                     )
                     extensions.forEach { extension ->
                         extension.sources.forEach {

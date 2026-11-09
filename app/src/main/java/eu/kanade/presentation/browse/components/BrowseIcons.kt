@@ -24,6 +24,7 @@ import mihon.icons.materialsymbols.roundedfilled.Dangerous
 import mihon.icons.materialsymbols.roundedfilled.Warning
 import tachiyomi.domain.source.model.Source
 import tachiyomi.source.local.isLocal
+import eu.kanade.tachiyomi.source.gdrive.isGDrive
 
 private val defaultModifier = Modifier
     .height(40.dp)
@@ -46,6 +47,13 @@ fun SourceIcon(
         source.isLocal() -> {
             Image(
                 painter = painterResource(R.mipmap.ic_local_source),
+                contentDescription = null,
+                modifier = modifier.then(defaultModifier),
+            )
+        }
+        source.isGDrive() -> {
+            Image(
+                painter = painterResource(R.drawable.ic_gdrive_source),
                 contentDescription = null,
                 modifier = modifier.then(defaultModifier),
             )

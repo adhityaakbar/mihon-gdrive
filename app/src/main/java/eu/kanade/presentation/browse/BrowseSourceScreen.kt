@@ -23,6 +23,8 @@ import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.automirroredrounded.Help
 import mihon.icons.materialsymbols.rounded.Public
 import mihon.icons.materialsymbols.rounded.Refresh
+import mihon.icons.materialsymbols.rounded.Settings
+import eu.kanade.tachiyomi.source.gdrive.GDriveSource
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.library.model.LibraryDisplayMode
 import tachiyomi.domain.manga.model.Manga
@@ -46,6 +48,7 @@ fun BrowseSourceContent(
     onWebViewClick: () -> Unit,
     onHelpClick: () -> Unit,
     onLocalSourceHelpClick: () -> Unit,
+    onSettingsClick: () -> Unit = {},
     onMangaClick: (Manga) -> Unit,
     onMangaLongClick: (Manga) -> Unit,
 ) {
@@ -84,7 +87,20 @@ fun BrowseSourceContent(
                 is LoadState.Error -> getErrorMessage(errorState)
                 else -> stringResource(MR.strings.no_results_found)
             },
-            actions = if (source is LocalSource) {
+            actions = if (source is GDriveSource) {
+                listOf(
+                    EmptyScreenAction(
+                        stringRes = MR.strings.action_settings,
+                        icon = MaterialSymbols.Rounded.Settings,
+                        onClick = onSettingsClick,
+                    ),
+                    EmptyScreenAction(
+                        stringRes = MR.strings.action_retry,
+                        icon = MaterialSymbols.Rounded.Refresh,
+                        onClick = mangaList::refresh,
+                    ),
+                )
+            } else if (source is LocalSource) {
                 listOf(
                     EmptyScreenAction(
                         stringRes = MR.strings.local_source_help_guide,
