@@ -24,6 +24,8 @@ const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 const memoryCache = new Map();
 // Cache for extracted images list: fileId -> string[] of file paths
 const extractedPagesCache = new Map();
+// Real-time download/extraction progress tracker
+const progressMap = new Map();
 
 function getCached(key) {
   const item = memoryCache.get(key);
@@ -143,14 +145,30 @@ async function getFileDownloadUrl(fileId) {
   return `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=${confirmToken}`;
 }
 
-// Ensure a file is downloaded and cached locally
+// Ensure a file is downloaded and cached locally with progress tracking
 async function ensureLocalFile(fileId, fileName = 'file.bin') {
   const ext = fileName.split('.').pop().toLowerCase();
   const cacheFile = path.join(CACHE_DIR, `${fileId}.${ext}`);
 
   if (fs.existsSync(cacheFile) && fs.statSync(cacheFile).size > 0) {
+    const fileSize = fs.statSync(cacheFile).size;
+    progressMap.set(fileId, {
+      status: 'ready',
+      percent: 100,
+      loaded: fileSize,
+      total: fileSize,
+      message: 'File sudah tersedia di cache'
+    });
     return cacheFile;
   }
+
+  progressMap.set(fileId, {
+    status: 'downloading',
+    percent: 0,
+    loaded: 0,
+    total: 0,
+    message: 'Memulai pengunduhan dari Google Drive...'
+  });
 
   console.log(`Downloading ${fileId} (${fileName}) to cache...`);
   const directUrl = await getFileDownloadUrl(fileId);
@@ -159,20 +177,66 @@ async function ensureLocalFile(fileId, fileName = 'file.bin') {
   });
 
   if (!res.ok) {
+    progressMap.set(fileId, {
+      status: 'error',
+      percent: 0,
+      message: `Download gagal (HTTP ${res.status})`
+    });
     throw new Error(`Download failed with status ${res.status}`);
   }
 
-  const arrayBuf = await res.arrayBuffer();
-  fs.writeFileSync(cacheFile, Buffer.from(arrayBuf));
-  console.log(`Saved ${fileId} (${(fs.statSync(cacheFile).size / (1024 * 1024)).toFixed(1)} MB)`);
-  return cacheFile;
+  const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
+  let loaded = 0;
+  const writeStream = fs.createWriteStream(cacheFile);
+
+  try {
+    for await (const chunk of res.body) {
+      writeStream.write(chunk);
+      loaded += chunk.length;
+      const pct = contentLength > 0 ? Math.min(99, Math.round((loaded / contentLength) * 100)) : 50;
+      progressMap.set(fileId, {
+        status: 'downloading',
+        percent: pct,
+        loaded,
+        total: contentLength,
+        message: `Mengunduh: ${pct}% (${(loaded / (1024*1024)).toFixed(1)} MB)`
+      });
+    }
+
+    await new Promise((resolve, reject) => {
+      writeStream.end();
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+
+    progressMap.set(fileId, {
+      status: 'downloaded',
+      percent: 100,
+      loaded,
+      total: loaded,
+      message: 'Pengunduhan selesai'
+    });
+    console.log(`Saved ${fileId} (${(fs.statSync(cacheFile).size / (1024 * 1024)).toFixed(1)} MB)`);
+    return cacheFile;
+  } catch (err) {
+    try { fs.unlinkSync(cacheFile); } catch (_) {}
+    progressMap.set(fileId, {
+      status: 'error',
+      percent: 0,
+      message: `Download terputus: ${err.message}`
+    });
+    throw err;
+  }
 }
 
 // Unpack archive and get sorted list of image file paths
 async function getExtractedImages(fileId, fileName) {
   if (extractedPagesCache.has(fileId)) {
     const cached = extractedPagesCache.get(fileId);
-    if (cached && cached.length > 0) return cached;
+    if (cached && cached.length > 0) {
+      progressMap.set(fileId, { status: 'ready', percent: 100, message: 'Siap' });
+      return cached;
+    }
   }
 
   const targetDir = path.join(EXTRACTED_DIR, fileId);
@@ -183,13 +247,20 @@ async function getExtractedImages(fileId, fileName) {
     if (existingImages.length > 0) {
       existingImages.sort((a, b) => naturalSort(path.basename(a), path.basename(b)));
       extractedPagesCache.set(fileId, existingImages);
+      progressMap.set(fileId, { status: 'ready', percent: 100, message: 'Siap' });
       return existingImages;
     }
   }
 
-  // Ensure archive file is downloaded
+  // Ensure archive file is downloaded (with real-time progress)
   const archivePath = await ensureLocalFile(fileId, fileName);
   fs.mkdirSync(targetDir, { recursive: true });
+
+  progressMap.set(fileId, {
+    status: 'extracting',
+    percent: 92,
+    message: 'Mengekstrak lembaran gambar komik...'
+  });
 
   console.log(`Extracting archive ${fileName} to ${targetDir}...`);
   try {
@@ -210,6 +281,12 @@ async function getExtractedImages(fileId, fileName) {
   console.log(`Extracted ${images.length} images from ${fileName}`);
 
   extractedPagesCache.set(fileId, images);
+  progressMap.set(fileId, {
+    status: 'ready',
+    percent: 100,
+    totalImages: images.length,
+    message: `${images.length} lembar halaman siap dibaca`
+  });
   return images;
 }
 
@@ -314,6 +391,22 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: false, error: err.message }));
     }
+    return;
+  }
+
+  // --- API: Real-Time Download & Extraction Progress ---
+  // Endpoint: /api/progress/:fileId
+  if (pathname.startsWith('/api/progress/')) {
+    const fileId = pathname.replace('/api/progress/', '').split('?')[0];
+    const p = progressMap.get(fileId) || {
+      status: 'idle',
+      percent: 0,
+      loaded: 0,
+      total: 0,
+      message: 'Menghubungkan...'
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ success: true, ...p }));
     return;
   }
 
@@ -456,7 +549,6 @@ const server = http.createServer(async (req, res) => {
             'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800'
           });
           const buffer = Buffer.from(await thumbRes.arrayBuffer());
-          // Save cover cache
           fs.writeFileSync(localCover, buffer);
           res.end(buffer);
           return;

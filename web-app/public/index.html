@@ -331,14 +331,50 @@
     <!-- Reader Main Stage -->
     <div id="reader-stage" class="relative flex-1 w-full h-full overflow-hidden flex items-center justify-center bg-black">
       
-      <!-- Loading Indicator -->
-      <div id="reader-spinner" class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-sm text-slate-400">
-        <div class="relative w-12 h-12 mb-4">
-          <div class="w-12 h-12 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin"></div>
-          <i data-lucide="book-open" class="w-5 h-5 text-indigo-400 absolute inset-0 m-auto"></i>
+      <!-- ================= DETAILED REAL-TIME DOWNLOAD & RENDERING PROGRESS MODAL ================= -->
+      <div id="reader-spinner" class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md p-6 text-slate-300">
+        <div class="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl flex flex-col items-center text-center">
+          
+          <!-- Circular SVG Progress Ring with percentage -->
+          <div class="relative w-24 h-24 mb-5 flex items-center justify-center">
+            <svg class="w-24 h-24 transform -rotate-90">
+              <circle cx="48" cy="48" r="40" stroke="currentColor" stroke-width="5" class="text-slate-800" fill="transparent" />
+              <circle id="progress-ring-circle" cx="48" cy="48" r="40" stroke="currentColor" stroke-width="5.5"
+                      class="text-brand-500 transition-all duration-200 ease-out" 
+                      fill="transparent"
+                      stroke-dasharray="251.3"
+                      stroke-dashoffset="251.3"
+                      stroke-linecap="round" />
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span id="progress-percent" class="text-xl font-black font-mono tracking-tight text-white">0%</span>
+            </div>
+          </div>
+
+          <!-- Status Title -->
+          <h3 id="reader-status-text" class="text-sm sm:text-base font-bold text-white mb-1.5 truncate max-w-full">
+            Menghubungkan ke Google Drive...
+          </h3>
+          
+          <!-- Substatus / MB progress / Page render counter -->
+          <p id="reader-substatus-text" class="text-xs font-mono text-brand-400 font-semibold mb-4 truncate max-w-full">
+            0.0 MB / 0.0 MB
+          </p>
+
+          <!-- Horizontal Animated Progress Bar -->
+          <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden mb-3">
+            <div id="progress-bar-fill" class="bg-gradient-to-r from-brand-600 via-indigo-400 to-indigo-300 h-full rounded-full transition-all duration-200 ease-out shadow-sm shadow-indigo-500/50" style="width: 0%"></div>
+          </div>
+
+          <!-- Phase Badge / Label -->
+          <div class="flex items-center gap-2 mt-1">
+            <span class="inline-block w-2 h-2 rounded-full bg-brand-400 animate-pulse"></span>
+            <span id="progress-phase-label" class="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+              Fase 1: Pengunduhan Data
+            </span>
+          </div>
+
         </div>
-        <p class="text-sm font-semibold text-slate-200" id="reader-status-text">Menyiapkan buku komik...</p>
-        <p class="text-xs text-slate-500 mt-1" id="reader-substatus-text">Memuat halaman dengan efek buku 3D</p>
       </div>
 
       <!-- MODE A: 3D Realistic Book Flip Container -->
@@ -357,9 +393,6 @@
       </div>
 
       <!-- Invisible Mihon Tap Zones (Click Navigation) -->
-      <!-- Left 30%: Page Flip / Prev or Next depending on RTL/LTR -->
-      <!-- Center 40%: Toggle UI Controls (Top bar, Bottom bar, HUD) -->
-      <!-- Right 30%: Page Flip / Next or Prev depending on RTL/LTR -->
       <div id="tap-zone-left" class="absolute inset-y-0 left-0 w-[30%] z-20 cursor-pointer opacity-0 hover:bg-white/[0.02]" onclick="onTapZone('left')"></div>
       <div id="tap-zone-center" class="absolute inset-y-0 left-[30%] w-[40%] z-20 cursor-pointer" onclick="onTapZone('center')"></div>
       <div id="tap-zone-right" class="absolute inset-y-0 right-0 w-[30%] z-20 cursor-pointer opacity-0 hover:bg-white/[0.02]" onclick="onTapZone('right')"></div>
@@ -553,12 +586,11 @@
     let allComics = [];
     let currentComic = null;
     let currentChapters = [];
-    let isSortDesc = false; // Terlama ke terbaru (default manga reading order)
+    let isSortDesc = false;
 
     // Reader State
-    // Modes: 'book-rtl', 'book-ltr', 'slide-rtl', 'slide-ltr', 'webtoon'
     let readingMode = localStorage.getItem('komik_reading_mode') || 'book-rtl';
-    let isSoundEnabled = localStorage.getItem('komik_sound_enabled') !== '0'; // default ON
+    let isSoundEnabled = localStorage.getItem('komik_sound_enabled') !== '0';
     let activeChapter = null;
     let activeChapterIndex = -1;
     let totalPages = 0;
@@ -566,8 +598,7 @@
     let controlsVisible = true;
     let pageFlipInstance = null;
     let pdfDocument = null;
-    let chapterPagesData = null; // { type: 'images'|'pdf', pages: [...] }
-    let pageBlobs = []; // for PDF rendered images
+    let chapterPagesData = null;
     let audioContext = null;
 
     // Initialize App
@@ -810,7 +841,7 @@
       }
     }
 
-    // --- REALISTIC PAPER TURN SOUND SYNTHESIS (Web Audio API) ---
+    // --- REALISTIC PAPER TURN SOUND SYNTHESIS ---
     function playPaperRustleSound() {
       if (!isSoundEnabled) return;
       try {
@@ -823,8 +854,7 @@
           audioContext.resume();
         }
 
-        // Realistic paper flip audio envelope
-        const duration = 0.14; // 140ms
+        const duration = 0.14;
         const sampleRate = audioContext.sampleRate;
         const bufferSize = Math.floor(sampleRate * duration);
         const buffer = audioContext.createBuffer(1, bufferSize, sampleRate);
@@ -833,10 +863,8 @@
         let lastSample = 0.0;
         for (let i = 0; i < bufferSize; i++) {
           const progress = i / bufferSize;
-          // Dual white noise filtered
           const white = Math.random() * 2 - 1;
           lastSample = (lastSample * 0.75) + (white * 0.25);
-          // Realistic envelope: soft attack, parabolic curve, delicate decay
           const env = Math.sin(progress * Math.PI) * Math.pow(1 - progress, 1.2);
           output[i] = lastSample * env * 0.3;
         }
@@ -844,7 +872,6 @@
         const whiteNoise = audioContext.createBufferSource();
         whiteNoise.buffer = buffer;
 
-        // Bandpass filter centered at 2000Hz creates crisp paper fiber friction
         const bandpass = audioContext.createBiquadFilter();
         bandpass.type = 'bandpass';
         bandpass.frequency.value = 2100;
@@ -858,6 +885,32 @@
       }
     }
 
+    // --- PERCENTAGE PROGRESS HELPER ---
+    function setReaderProgress(pct, title, subtitle, phase) {
+      const p = Math.max(0, Math.min(100, Math.round(pct)));
+      
+      const percentEl = document.getElementById('progress-percent');
+      if (percentEl) percentEl.textContent = `${p}%`;
+
+      const barEl = document.getElementById('progress-bar-fill');
+      if (barEl) barEl.style.width = `${p}%`;
+
+      const ringEl = document.getElementById('progress-ring-circle');
+      if (ringEl) {
+        const c = 251.3; // 2 * PI * 40
+        ringEl.style.strokeDashoffset = c - (p / 100) * c;
+      }
+
+      const titleEl = document.getElementById('reader-status-text');
+      if (titleEl && title) titleEl.textContent = title;
+
+      const subEl = document.getElementById('reader-substatus-text');
+      if (subEl && subtitle) subEl.textContent = subtitle;
+
+      const phaseEl = document.getElementById('progress-phase-label');
+      if (phaseEl && phase) phaseEl.textContent = phase;
+    }
+
     // --- FULLSCREEN READER CORE ENGINE ---
     async function launchReader(chapter, startPage = 1) {
       activeChapter = chapter;
@@ -866,8 +919,6 @@
 
       const reader = document.getElementById('view-reader');
       const spinner = document.getElementById('reader-spinner');
-      const statusText = document.getElementById('reader-status-text');
-      const substatus = document.getElementById('reader-substatus-text');
 
       reader.classList.remove('hidden');
       spinner.classList.remove('hidden');
@@ -876,8 +927,8 @@
 
       document.getElementById('reader-chapter-title').textContent = chapter.name;
       document.getElementById('reader-comic-title').textContent = currentComic ? currentComic.title : '';
-      statusText.textContent = `Mengunduh & Membaca ${chapter.name}...`;
-      substatus.textContent = 'Mempersiapkan efek animasi buku';
+
+      setReaderProgress(0, `Membuka ${chapter.name}...`, 'Menghubungkan ke server...', 'Fase 1: Persiapan Unduhan');
 
       // Update Chapter Drawer
       renderChapterDrawer();
@@ -885,11 +936,41 @@
       // Clean up previous reader instances
       destroyCurrentReader();
 
+      let pollInterval = null;
+
       try {
-        // Query Chapter Descriptor
+        const ext = chapter.extension.toLowerCase();
+        const isPdf = ext === 'pdf';
+
+        // Start progress polling for archive downloads on backend
+        if (!isPdf) {
+          pollInterval = setInterval(async () => {
+            try {
+              const pRes = await fetch(`/api/progress/${chapter.id}`);
+              const pData = await pRes.json();
+              if (pData.success) {
+                if (pData.status === 'downloading') {
+                  const loadedMb = (pData.loaded / (1024 * 1024)).toFixed(1);
+                  const totalMb = (pData.total / (1024 * 1024)).toFixed(1);
+                  const pct = Math.round(pData.percent * 0.75); // 0 - 75%
+                  setReaderProgress(pct, 'Mengunduh Arsip Komik...', `${pData.percent}% (${loadedMb} MB / ${totalMb} MB)`, 'Fase 1: Unduhan Google Drive');
+                } else if (pData.status === 'extracting') {
+                  setReaderProgress(85, 'Mengekstrak Halaman Komik...', 'Membuka gambar CBR/CBZ...', 'Fase 2: Ekstraksi Lembaran');
+                }
+              }
+            } catch (_) {}
+          }, 250);
+        }
+
+        // Query Chapter Pages Descriptor
         const pagesUrl = `/api/comics/${currentComic.id}/chapters/${chapter.id}/pages?name=${encodeURIComponent(chapter.fullName)}`;
         const res = await fetch(pagesUrl);
         const data = await res.json();
+
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
 
         if (!data.success) {
           throw new Error(data.error || 'Gagal memuat descriptor chapter');
@@ -900,21 +981,44 @@
         if (data.format === 'images') {
           // Direct images from archive CBR / CBZ / RAR / ZIP
           totalPages = data.totalPages;
+
+          // Preload first few images for instant smooth rendering
+          setReaderProgress(88, 'Merender Buku Komik 3D...', `Menyiapkan ${totalPages} lembar halaman...`, 'Fase 3: Render Lembaran Buku');
+          
+          const preloadCount = Math.min(6, data.pages.length);
+          let loadedImages = 0;
+          for (let i = 0; i < preloadCount; i++) {
+            await new Promise((resolve) => {
+              const img = new Image();
+              img.onload = img.onerror = () => {
+                loadedImages++;
+                const pct = 88 + Math.round((loadedImages / preloadCount) * 12);
+                setReaderProgress(pct, 'Merender Lembaran Buku...', `Halaman awal ${loadedImages} / ${preloadCount} siap`, 'Fase 3: Render Lembaran Buku');
+                resolve();
+              };
+              img.src = data.pages[i];
+            });
+          }
+
+          setReaderProgress(100, 'Buku Siap!', 'Membuka komik...', 'Selesai');
           await initReaderWithImages(data.pages, startPage);
+
         } else {
           // PDF document
-          statusText.textContent = 'Merender lembaran PDF...';
+          setReaderProgress(10, 'Mengunduh PDF Dokumen...', 'Memulai koneksi dokumen PDF...', 'Fase 1: Pengunduhan Data');
           await initReaderWithPdf(data.streamUrl, startPage);
         }
 
-        spinner.classList.add('hidden');
-        updatePageIndicator(currentPage);
-        saveCurrentProgress();
+        setTimeout(() => {
+          spinner.classList.add('hidden');
+          updatePageIndicator(currentPage);
+          saveCurrentProgress();
+        }, 300);
 
       } catch (err) {
+        if (pollInterval) clearInterval(pollInterval);
         console.error('Reader launch error:', err);
-        statusText.textContent = `Gagal memuat komik: ${err.message}`;
-        substatus.textContent = 'Silakan coba lagi atau pilih chapter lain';
+        setReaderProgress(0, `Gagal memuat komik: ${err.message}`, 'Silakan coba lagi atau pilih chapter lain', 'Terjadi Kesalahan');
       }
     }
 
@@ -923,11 +1027,15 @@
         try { pageFlipInstance.destroy(); } catch (_) {}
         pageFlipInstance = null;
       }
-      document.getElementById('flipbook').innerHTML = '';
-      document.getElementById('slide-track').innerHTML = '';
-      document.getElementById('webtoon-track').innerHTML = '';
+      const containerBook = document.getElementById('container-book');
+      if (containerBook) {
+        containerBook.innerHTML = '<div id="flipbook" class="relative"></div>';
+      }
+      const slide = document.getElementById('slide-track');
+      if (slide) slide.innerHTML = '';
+      const webtoon = document.getElementById('webtoon-track');
+      if (webtoon) webtoon.innerHTML = '';
       pdfDocument = null;
-      pageBlobs = [];
     }
 
     // Initialize with direct image URLs (CBR / CBZ)
@@ -946,8 +1054,6 @@
 
     // Initialize with PDF document
     async function initReaderWithPdf(streamUrl, startPage = 1) {
-      const statusText = document.getElementById('reader-status-text');
-      
       const loadingTask = pdfjsLib.getDocument({
         url: streamUrl,
         cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
@@ -956,14 +1062,19 @@
 
       loadingTask.onProgress = (p) => {
         if (p.total > 0) {
-          const pct = Math.round((p.loaded / p.total) * 100);
-          statusText.textContent = `Mengunduh PDF: ${pct}%...`;
+          const downloadPct = Math.round((p.loaded / p.total) * 100);
+          const loadedMb = (p.loaded / (1024 * 1024)).toFixed(1);
+          const totalMb = (p.total / (1024 * 1024)).toFixed(1);
+          const overallPct = Math.round(downloadPct * 0.7); // 0 - 70%
+          setReaderProgress(overallPct, 'Mengunduh PDF dari Drive...', `${downloadPct}% (${loadedMb} MB / ${totalMb} MB)`, 'Fase 1: Pengunduhan Data');
         }
       };
 
       pdfDocument = await loadingTask.promise;
       totalPages = pdfDocument.numPages;
       setupSeekbar(totalPages, startPage);
+
+      setReaderProgress(75, 'Merender Dokumen PDF...', `Total ${totalPages} halaman terdeteksi`, 'Fase 2: Rendering Halaman');
 
       // Render PDF pages
       if (readingMode === 'book-rtl' || readingMode === 'book-ltr') {
@@ -973,6 +1084,8 @@
       } else if (readingMode === 'webtoon') {
         initWebtoonMode(null, 'pdf', startPage);
       }
+
+      setReaderProgress(100, 'Buku Siap!', 'Membuka komik...', 'Selesai');
     }
 
     // --- MODE 1 & 2: 3D REALISTIC BOOK FLIP (StPageFlip) ---
@@ -986,12 +1099,10 @@
       const stageW = stage.clientWidth || window.innerWidth;
       const stageH = stage.clientHeight || window.innerHeight;
 
-      // Realistic aspect ratio: typical manga is ~0.7 (550x780)
       let pageW = Math.min(stageW * 0.95, 600);
       let pageH = Math.min(stageH * 0.92, pageW / 0.7);
       pageW = Math.round(pageH * 0.7);
 
-      // Create page elements
       for (let i = 1; i <= totalPages; i++) {
         const pageEl = document.createElement('div');
         pageEl.className = 'page select-none';
@@ -1002,7 +1113,6 @@
         content.style.width = '100%';
         content.style.height = '100%';
 
-        // Book spine fold shading
         const spineShadow = document.createElement('div');
         spineShadow.className = isRtl ? 'page-spine-shadow-right' : 'page-spine-shadow-left';
         content.appendChild(spineShadow);
@@ -1015,7 +1125,6 @@
           img.alt = `Halaman ${i}`;
           content.appendChild(img);
         } else {
-          // PDF canvas
           const canvas = document.createElement('canvas');
           canvas.id = `book-pdf-canvas-${i}`;
           canvas.className = 'max-w-full max-h-full object-contain pointer-events-none';
@@ -1026,7 +1135,6 @@
         flipContainer.appendChild(pageEl);
       }
 
-      // Initialize StPageFlip
       pageFlipInstance = new St.PageFlip(flipContainer, {
         width: pageW,
         height: pageH,
@@ -1047,7 +1155,6 @@
 
       pageFlipInstance.loadFromHTML(flipContainer.querySelectorAll('.page'));
 
-      // Events
       pageFlipInstance.on('flip', (e) => {
         currentPage = e.data + 1;
         updatePageIndicator(currentPage);
@@ -1059,14 +1166,8 @@
           if (currentPage + 1 <= totalPages) renderPdfPageOnCanvas(currentPage + 1, `book-pdf-canvas-${currentPage + 1}`);
           if (currentPage - 1 >= 1) renderPdfPageOnCanvas(currentPage - 1, `book-pdf-canvas-${currentPage - 1}`);
         }
-
-        // Check end of chapter
-        if (currentPage >= totalPages) {
-          // If on last page, next flip prompts chapter end
-        }
       });
 
-      // If PDF, render initial page
       if (type === 'pdf') {
         renderPdfPageOnCanvas(startPage, `book-pdf-canvas-${startPage}`);
         if (startPage + 1 <= totalPages) renderPdfPageOnCanvas(startPage + 1, `book-pdf-canvas-${startPage + 1}`);
@@ -1150,7 +1251,6 @@
         track.appendChild(pageEl);
       }
 
-      // IntersectionObserver for tracking active page during vertical scroll
       const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
@@ -1171,7 +1271,6 @@
         if (el) observer.observe(el);
       }
 
-      // Scroll to start page
       setTimeout(() => {
         const target = document.getElementById(`webtoon-page-${startPage}`);
         if (target) target.scrollIntoView({ behavior: 'smooth' });
@@ -1216,7 +1315,6 @@
       const isRtl = readingMode === 'book-rtl' || readingMode === 'slide-rtl';
 
       if (readingMode === 'webtoon') {
-        // Vertical scroll up/down
         const container = document.getElementById('container-webtoon');
         const scrollAmount = window.innerHeight * 0.75;
         if (zone === 'left') {
@@ -1227,8 +1325,6 @@
         return;
       }
 
-      // In RTL (Manga): Left = Forward/Next, Right = Backward/Prev
-      // In LTR (Western): Right = Forward/Next, Left = Backward/Prev
       if (isRtl) {
         if (zone === 'left') flipPageForward();
         else flipPageBackward();
@@ -1339,6 +1435,36 @@
       }
     });
 
+    // Mouse Wheel Scroll Navigation (Flip page on Scroll Down / Up)
+    let lastWheelTime = 0;
+    const WHEEL_COOLDOWN = 360; // ms cooldown to avoid rapid multi-page flips on smooth wheels
+
+    window.addEventListener('wheel', (e) => {
+      const reader = document.getElementById('view-reader');
+      if (reader.classList.contains('hidden')) return;
+
+      // In Webtoon mode, keep native continuous vertical scrolling
+      if (readingMode === 'webtoon') return;
+
+      // Prevent default page scroll
+      e.preventDefault();
+
+      const now = Date.now();
+      if (now - lastWheelTime < WHEEL_COOLDOWN) return;
+
+      // Threshold to distinguish real scroll from trackpad jitter
+      if (Math.abs(e.deltaY) >= 12 || Math.abs(e.deltaX) >= 12) {
+        lastWheelTime = now;
+        if (e.deltaY > 0 || e.deltaX > 0) {
+          // Scroll down / right -> Flip to next page
+          flipPageForward();
+        } else if (e.deltaY < 0 || e.deltaX < 0) {
+          // Scroll up / left -> Flip to previous page
+          flipPageBackward();
+        }
+      }
+    }, { passive: false });
+
     // --- READING MODE SWITCHER ---
     function openModeModal() {
       document.getElementById('mode-modal').classList.remove('hidden');
@@ -1355,7 +1481,6 @@
       updateModeUI();
       closeModeModal();
 
-      // Re-initialize reader with new mode
       if (activeChapter && chapterPagesData) {
         const savedPage = currentPage;
         destroyCurrentReader();
@@ -1512,7 +1637,6 @@
       update();
       setInterval(update, 10000);
 
-      // Battery status if available
       if ('getBattery' in navigator) {
         navigator.getBattery().then(batt => {
           const battBox = document.getElementById('hud-battery');
