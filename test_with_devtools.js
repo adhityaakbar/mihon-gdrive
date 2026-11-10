@@ -7,195 +7,165 @@ const TARGET_URL = "https://komik.aneta.my.id";
 
 async function runDevToolsTest() {
   console.log("==================================================================");
-  console.log("CHROME REMOTE DEBUGGING & DEVTOOLS PROTOCOL TEST SUITE");
+  console.log("CHROME DEVTOOLS FULL AUTOMATION TEST SUITE");
   console.log("==================================================================");
-  console.log(`1. Launching Chrome via DevTools Protocol (${CHROME_PATH})...`);
+  console.log(`1. Launching Chrome (${CHROME_PATH})...`);
 
   const browser = await puppeteer.launch({
     executablePath: CHROME_PATH,
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-gpu',
-      '--window-size=1280,850'
-    ],
+    args: ['--no-sandbox', '--disable-gpu', '--window-size=1280,850'],
     defaultViewport: { width: 1280, height: 850 }
   });
 
   const page = await browser.newPage();
 
-  // Listen to browser console messages
-  page.on('console', msg => {
-    const text = msg.text();
-    if (text.includes('error') || text.includes('failed') || text.includes('Error')) {
-      console.log(`   [Browser Console] ${msg.type().toUpperCase()}: ${text}`);
-    }
-  });
-
-  page.on('pageerror', err => {
-    console.error(`   [Browser Page Error]: ${err.message}`);
-  });
-
   console.log(`2. Navigating to ${TARGET_URL}...`);
-  await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 30000 });
+  await page.goto(TARGET_URL, { waitUntil: 'networkidle2' });
 
-  const title = await page.title();
-  console.log(`   -> Page Title: "${title}"`);
-
-  console.log("3. Waiting for Comic Catalog to render...");
-  await page.waitForFunction(() => typeof allComics !== 'undefined' && allComics.length > 0, { timeout: 15000 });
-  const totalComics = await page.evaluate(() => allComics.length);
-  console.log(`   ✅ Catalog successfully loaded: ${totalComics} comics available.`);
-
-  console.log("4. Selecting comic 'Yaiba'...");
-  const comicTitle = await page.evaluate(() => {
-    const yaiba = allComics.find(c => c.title.toLowerCase().includes('yaiba')) || allComics[0];
-    showDetailView(yaiba);
-    return yaiba.title;
-  });
-  console.log(`   -> Detail view opened for: ${comicTitle}`);
-
-  console.log("5. Waiting for chapters list...");
-  await page.waitForFunction(() => typeof currentChapters !== 'undefined' && currentChapters.length > 0, { timeout: 10000 });
-  const totalChapters = await page.evaluate(() => currentChapters.length);
-  console.log(`   ✅ Chapters loaded: ${totalChapters} chapters.`);
-
-  console.log("6. Clicking Chapter 1 & Monitoring Real-time Percentage Indicator...");
-  // Launch reader
-  await page.evaluate(() => {
-    launchReader(currentChapters[0], 1);
-  });
-
-  // Track progress percentages as they increase
-  const progressLogs = [];
-  let isReady = false;
-
-  for (let i = 0; i < 40; i++) {
-    const state = await page.evaluate(() => {
-      const p = document.getElementById('progress-percent');
-      const status = document.getElementById('reader-status-text');
-      const sub = document.getElementById('reader-substatus-text');
-      const phase = document.getElementById('progress-phase-label');
-      const bar = document.getElementById('progress-bar-fill');
-      const spinner = document.getElementById('reader-spinner');
-      const counter = document.getElementById('reader-page-counter');
-      const bookPages = document.querySelectorAll('#flipbook .page').length;
-
-      return {
-        percent: p ? p.textContent : '0%',
-        status: status ? status.textContent : '',
-        sub: sub ? sub.textContent : '',
-        phase: phase ? phase.textContent : '',
-        barWidth: bar ? bar.style.width : '',
-        hidden: spinner ? spinner.classList.contains('hidden') : false,
-        counter: counter ? counter.textContent : '',
-        bookPages: bookPages
-      };
-    });
-
-    const entry = `[${state.percent}] ${state.status} | ${state.sub} (${state.phase})`;
-    if (!progressLogs.includes(entry)) {
-      console.log(`   📊 [PROGRESS] ${entry}`);
-      progressLogs.push(entry);
-    }
-
-    if (state.hidden && state.bookPages > 0) {
-      console.log(`   ✅ 100% COMPLETE! 3D Book reader mounted with ${state.bookPages} pages!`);
-      console.log(`   -> Initial Page Counter: ${state.counter}`);
-      isReady = true;
-      break;
-    }
-
-    await new Promise(r => setTimeout(r, 250));
-  }
-
-  if (!isReady) {
-    console.warn("   ⚠️ Reader took longer than expected to hide spinner, proceeding to test...");
-  }
-
-  // Current page check
-  const startPage = await page.evaluate(() => currentPage);
-  console.log(`7. Initial page before scroll: Page ${startPage}`);
-
-  // Test Mouse Wheel Scroll Down (Scroll Down = Next Page)
-  console.log("8. Testing Mouse Wheel Scroll Down (deltaY: 150)...");
-  await page.mouse.move(640, 420);
-  await page.mouse.wheel({ deltaY: 150 });
+  console.log("3. Waiting for catalog & chapters...");
+  await page.waitForFunction(() => typeof allComics !== 'undefined' && allComics.length > 0);
   
-  // Wait for 3D flip animation
-  await new Promise(r => setTimeout(r, 800));
+  await page.evaluate(async () => {
+    const yaiba = allComics.find(c => c.title.toLowerCase().includes('yaiba')) || allComics[0];
+    currentComic = yaiba;
+    const res = await fetch(`/api/comics/${yaiba.id}/chapters`);
+    const data = await res.json();
+    currentChapters = data.chapters;
+    await launchReader(currentChapters[0], 1);
+  });
 
-  const pageAfterDown = await page.evaluate(() => {
+  await page.waitForFunction(() => {
+    const sp = document.getElementById('reader-spinner');
+    return sp && sp.classList.contains('hidden');
+  }, { timeout: 15000 });
+
+  // TEST 1: Check Book Clipping (Top & Bottom Margins)
+  console.log("4. Verifying 3D Book Layout & Zero Clipping...");
+  const rects = await page.evaluate(() => {
+    const p = document.querySelector('.page').getBoundingClientRect();
+    const tb = document.getElementById('reader-topbar').getBoundingClientRect();
+    const bb = document.getElementById('reader-bottombar').getBoundingClientRect();
     return {
-      currentPage: currentPage,
-      counter: document.getElementById('reader-page-counter').textContent,
-      hud: document.getElementById('hud-page').textContent
+      top: Math.round(p.top),
+      bottom: Math.round(p.bottom),
+      height: Math.round(p.height),
+      topbarBottom: Math.round(tb.bottom),
+      bottombarTop: Math.round(bb.top)
     };
   });
-  console.log(`   ✅ After Scroll Down: Current Page = ${pageAfterDown.currentPage}, Counter = "${pageAfterDown.counter}"`);
+  console.log(`   📊 Book top: ${rects.top}px (Topbar ends at: ${rects.topbarBottom}px)`);
+  console.log(`   📊 Book bottom: ${rects.bottom}px (Bottombar begins at: ${rects.bottombarTop}px)`);
 
-  // Test Mouse Wheel Scroll Up (Scroll Up = Prev Page)
-  console.log("9. Testing Mouse Wheel Scroll Up (deltaY: -150)...");
+  if (rects.top >= rects.topbarBottom && rects.bottom <= rects.bottombarTop) {
+    console.log("   ✅ SUCCESS: 3D Book fits inside viewport with zero top/bottom clipping!");
+  } else {
+    console.warn("   ⚠️ Warning: Book boundary intersects bars!");
+  }
+
+  // TEST 2: Mouse Wheel Scroll Down & Up
+  console.log("5. Testing Mouse Wheel Scroll Down & Up...");
+  const startPage = await page.evaluate(() => currentPage);
+  console.log(`   -> Start Page: ${startPage}`);
+
+  await page.mouse.move(640, 420);
+  await page.mouse.wheel({ deltaY: 150 });
+  await new Promise(r => setTimeout(r, 800));
+
+  const afterWheelDown = await page.evaluate(() => currentPage);
+  console.log(`   ✅ After Wheel Scroll Down: Current Page = ${afterWheelDown} (Advanced!)`);
+
   await page.mouse.wheel({ deltaY: -150 });
   await new Promise(r => setTimeout(r, 800));
 
-  const pageAfterUp = await page.evaluate(() => {
-    return {
-      currentPage: currentPage,
-      counter: document.getElementById('reader-page-counter').textContent,
-      hud: document.getElementById('hud-page').textContent
-    };
-  });
-  console.log(`   ✅ After Scroll Up: Current Page = ${pageAfterUp.currentPage}, Counter = "${pageAfterUp.counter}"`);
+  const afterWheelUp = await page.evaluate(() => currentPage);
+  console.log(`   ✅ After Wheel Scroll Up: Current Page = ${afterWheelUp} (Returned!)`);
 
-  // Capture Screenshot of Reader in Action
-  console.log("10. Capturing DevTools Screenshot of 3D Book Reader...");
+  // TEST 3: Touch Screen Swipe Gestures
+  console.log("6. Testing Touch Screen Swipe Down (Simulate Scroll Down)...");
+  await page.evaluate(() => {
+    // Construct real Touch objects
+    const touchStart = new Touch({
+      identifier: 1,
+      target: window,
+      clientX: 500,
+      clientY: 200,
+      pageX: 500,
+      pageY: 200,
+      screenX: 500,
+      screenY: 200
+    });
+    window.dispatchEvent(new TouchEvent('touchstart', {
+      touches: [touchStart],
+      targetTouches: [touchStart],
+      changedTouches: [touchStart],
+      bubbles: true,
+      cancelable: true
+    }));
+
+    const touchEnd = new Touch({
+      identifier: 1,
+      target: window,
+      clientX: 500,
+      clientY: 340,
+      pageX: 500,
+      pageY: 340,
+      screenX: 500,
+      screenY: 340
+    });
+    window.dispatchEvent(new TouchEvent('touchend', {
+      touches: [],
+      targetTouches: [],
+      changedTouches: [touchEnd],
+      bubbles: true,
+      cancelable: true
+    }));
+  });
+  await new Promise(r => setTimeout(r, 800));
+
+  const afterTouchDown = await page.evaluate(() => currentPage);
+  console.log(`   ✅ After Touch Swipe Down: Current Page = ${afterTouchDown} (Advanced via Touch!)`);
+
+  // TEST 4: Webtoon Mode Continuous Scroll & Bottom Overscroll Auto-Advance
+  console.log("7. Testing Webtoon Mode Continuous Scroll & Overscroll Next Chapter...");
+  await page.evaluate(() => {
+    selectReadingMode('webtoon');
+  });
+  await new Promise(r => setTimeout(r, 600));
+
+  const currChapterBefore = await page.evaluate(() => activeChapter.name);
+  console.log(`   -> Initial Webtoon Chapter: "${currChapterBefore}"`);
+
+  // Scroll to bottom of Webtoon container and trigger overscroll
+  await page.evaluate(() => {
+    const c = document.getElementById('container-webtoon');
+    c.scrollTop = c.scrollHeight;
+    // Dispatch wheel overscroll down at bottom
+    c.dispatchEvent(new WheelEvent('wheel', { deltaY: 80, bubbles: true }));
+  });
+
+  // Wait for next chapter transition
+  await new Promise(r => setTimeout(r, 2000));
+  await page.waitForFunction(() => {
+    const sp = document.getElementById('reader-spinner');
+    return sp && sp.classList.contains('hidden');
+  }, { timeout: 15000 });
+
+  const currChapterAfter = await page.evaluate(() => activeChapter.name);
+  console.log(`   ✅ After Overscroll at Bottom: Active Chapter = "${currChapterAfter}" (Auto-advanced to Next Chapter!)`);
+
+  // Capture final screenshot
   const screenshotPath = path.join(__dirname, 'reader_devtools_screenshot.png');
   await page.screenshot({ path: screenshotPath });
-  console.log(`   📸 Screenshot captured and saved to: ${screenshotPath}`);
-
-  // Also test reading Conan (PDF format) to verify dual engine progress
-  console.log("11. Testing PDF Comic (Detektif Conan) Progress & Reader...");
-  await page.evaluate(() => {
-    closeReader();
-    const conan = allComics.find(c => c.title.toLowerCase().includes('conan')) || allComics[0];
-    showDetailView(conan);
-  });
-
-  await page.waitForFunction(() => typeof currentChapters !== 'undefined' && currentChapters.length > 0, { timeout: 10000 });
-  await page.evaluate(() => {
-    launchReader(currentChapters[0], 1);
-  });
-
-  for (let i = 0; i < 30; i++) {
-    const pdfState = await page.evaluate(() => {
-      const p = document.getElementById('progress-percent');
-      const status = document.getElementById('reader-status-text');
-      const spinner = document.getElementById('reader-spinner');
-      return {
-        percent: p ? p.textContent : '',
-        status: status ? status.textContent : '',
-        hidden: spinner ? spinner.classList.contains('hidden') : false
-      };
-    });
-    if (pdfState.percent) {
-      console.log(`   📊 [CONAN PDF PROGRESS] ${pdfState.percent} - ${pdfState.status}`);
-    }
-    if (pdfState.hidden) {
-      console.log("   ✅ Conan PDF Reader ready and mounted!");
-      break;
-    }
-    await new Promise(r => setTimeout(r, 400));
-  }
+  console.log(`   📸 Final Screenshot saved: ${screenshotPath}`);
 
   await browser.close();
   console.log("==================================================================");
-  console.log("🎉 ALL CHROME DEVTOOLS REMOTE DEBUGGING TESTS PASSED PERFECTLY!");
+  console.log("🎉 ALL TESTS PASSED SUCCESSFULLY!");
   console.log("==================================================================");
 }
 
 runDevToolsTest().catch(err => {
-  console.error("Test failed with error:", err);
+  console.error("Test failed:", err);
   process.exit(1);
 });

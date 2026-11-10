@@ -92,8 +92,9 @@
       box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
     }
     .page {
-      background-color: #0b0f19;
-      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.4);
+      background-color: #030712;
+      border-radius: 4px;
+      overflow: hidden;
     }
     .page-content {
       width: 100%;
@@ -103,6 +104,7 @@
       justify-content: center;
       overflow: hidden;
       position: relative;
+      padding: 4px;
     }
     /* Book spine gradient lighting */
     .page-spine-shadow-left {
@@ -129,7 +131,7 @@
     /* Horizontal Slide animation */
     .slide-track {
       display: flex;
-      transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+      transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.25, 1);
       width: 100%;
       height: 100%;
     }
@@ -140,6 +142,41 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Mihon Pager Pan-Zoom Viewport & Content */
+    .pz-viewport {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+    }
+    .pz-content {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: center center;
+      will-change: transform;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .pz-content.animating {
+      transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.25, 1);
+    }
+    .pz-content img, .pz-content canvas {
+      display: block;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+      border-radius: 0.5rem;
+      box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.85);
     }
 
     /* Webtoon seamless continuous strip */
@@ -314,11 +351,23 @@
           <i data-lucide="volume-2" id="icon-sound" class="w-4 h-4"></i>
         </button>
 
+        <!-- Fit Mode Button (Mihon Scale Type) -->
+        <button onclick="openFitModal()" id="btn-fit" class="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 hover:text-white flex items-center gap-1.5 transition" title="Skala Tampilan (Fit to Screen)">
+          <i data-lucide="maximize-2" id="icon-fit" class="w-3.5 h-3.5 text-brand-400"></i>
+          <span id="current-fit-label" class="font-medium hidden xs:inline">Muat Layar</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+        </button>
+
         <!-- Reading Mode Button -->
-        <button onclick="openModeModal()" id="btn-mode" class="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 hover:text-white flex items-center gap-1.5 transition">
-          <i data-lucide="book" class="w-3.5 h-3.5 text-brand-400"></i>
+        <button onclick="openModeModal()" id="btn-mode" class="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 hover:text-white flex items-center gap-1.5 transition" title="Mode Membaca">
+          <i data-lucide="book" id="icon-mode" class="w-3.5 h-3.5 text-indigo-400"></i>
           <span id="current-mode-label" class="font-medium">Buku 3D (RTL)</span>
           <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
+        </button>
+
+        <!-- Mihon Reader Settings Button -->
+        <button onclick="openSettingsModal()" id="btn-settings" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition" title="Pengaturan Reader Lengkap (Autozoom & Gestur)">
+          <i data-lucide="sliders-horizontal" class="w-4 h-4 text-slate-300"></i>
         </button>
 
         <!-- Chapter Drawer Toggle -->
@@ -378,7 +427,7 @@
       </div>
 
       <!-- MODE A: 3D Realistic Book Flip Container -->
-      <div id="container-book" class="w-full h-full flex items-center justify-center overflow-hidden p-2 sm:p-4">
+      <div id="container-book" class="w-full h-full flex items-center justify-center overflow-hidden py-14 sm:py-16 px-4">
         <div id="flipbook" class="relative"></div>
       </div>
 
@@ -390,6 +439,26 @@
       <!-- MODE C: Webtoon Continuous Vertical Scroll Container -->
       <div id="container-webtoon" class="hidden w-full h-full overflow-y-auto overflow-x-hidden relative custom-scrollbar">
         <div id="webtoon-track" class="w-full max-w-3xl mx-auto flex flex-col items-center py-12"></div>
+      </div>
+
+      <!-- Mihon Autozoom Toast Badge -->
+      <div id="autozoom-badge" class="pointer-events-none opacity-0 transition-opacity duration-300 absolute top-16 left-1/2 -translate-x-1/2 z-30 px-3.5 py-1.5 rounded-full bg-slate-900/95 border border-amber-500/40 text-amber-300 backdrop-blur-md shadow-2xl flex items-center gap-2 text-xs font-semibold">
+        <i data-lucide="zap" class="w-4 h-4 text-amber-400 animate-pulse"></i>
+        <span id="autozoom-badge-text">⚡ Autozoom: Halaman Ganda (Spread)</span>
+      </div>
+
+      <!-- Floating Interactive Zoom HUD (visible when zoomed) -->
+      <div id="floating-zoom-hud" class="hidden absolute top-16 right-4 z-30 px-2 py-1.5 rounded-2xl bg-slate-950/90 backdrop-blur-md border border-slate-800 text-xs font-mono text-slate-200 shadow-2xl flex items-center gap-2 transition-all">
+        <button onclick="zoomOutStep()" class="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="Perkecil Zoom (-)">
+          <i data-lucide="minus" class="w-3.5 h-3.5"></i>
+        </button>
+        <span id="floating-zoom-val" class="font-bold text-white min-w-[42px] text-center text-xs">100%</span>
+        <button onclick="zoomInStep()" class="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="Perbesar Zoom (+)">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+        </button>
+        <button onclick="resetZoomDefault()" class="px-2 py-1 rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white text-[11px] font-sans font-semibold transition ml-1" title="Reset ke Skala Layar">
+          Reset
+        </button>
       </div>
 
       <!-- Invisible Mihon Tap Zones (Click Navigation) -->
@@ -484,16 +553,98 @@
       <div id="drawer-chapters-list" class="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar"></div>
     </div>
 
-    <!-- Reading Mode Modal / Bottom Sheet -->
-    <div id="mode-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="closeModeModal(event)">
+    <!-- Fit Mode Modal / Bottom Sheet (Mihon Scale Engine) -->
+    <div id="fit-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="closeFitModal(event)">
       <div class="bg-slate-900 border border-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl" onclick="event.stopPropagation()">
         
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-2">
             <div class="w-7 h-7 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center">
-              <i data-lucide="settings-2" class="w-4 h-4"></i>
+              <i data-lucide="maximize-2" class="w-4 h-4"></i>
             </div>
-            <h3 class="text-sm font-bold text-white">Mode Membaca (Mihon)</h3>
+            <div>
+              <h3 class="text-sm font-bold text-white">Skala Tampilan (Fit to Screen)</h3>
+              <p class="text-[10px] text-slate-400">Implementasi Scale Types ala Mihon</p>
+            </div>
+          </div>
+          <button onclick="closeFitModal()" class="p-1 rounded-lg text-slate-400 hover:text-white">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="space-y-2 mb-2">
+          <!-- 1. Fit Screen -->
+          <div onclick="selectScaleType('fit-screen')" class="fit-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-fit-screen">
+            <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="maximize-2" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1.5">
+                <h4 class="text-xs font-bold text-white">Muat Layar (Fit Screen)</h4>
+                <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300">Default Mihon</span>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-0.5">Seluruh halaman komik pas di layar tanpa terpotong (contain).</p>
+            </div>
+          </div>
+
+          <!-- 2. Fit Width -->
+          <div onclick="selectScaleType('fit-width')" class="fit-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-fit-width">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="arrow-left-right" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Muat Lebar (Fit Width)</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Lebar komik 100% layar. Sangat nyaman di HP untuk memperbesar teks.</p>
+            </div>
+          </div>
+
+          <!-- 3. Fit Height -->
+          <div onclick="selectScaleType('fit-height')" class="fit-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-fit-height">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="arrow-up-down" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Muat Tinggi (Fit Height)</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Tinggi komik 100% layar. Ideal saat membaca di layar komputer/desktop.</p>
+            </div>
+          </div>
+
+          <!-- 4. Smart Fit -->
+          <div onclick="selectScaleType('smart-fit')" class="fit-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-smart-fit">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="sparkles" class="w-5 h-5 text-amber-400"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Cerdas (Smart Fit)</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Otomatis muat layar untuk portrait, dan autozoom untuk spread ganda.</p>
+            </div>
+          </div>
+
+          <!-- 5. Original Size -->
+          <div onclick="selectScaleType('original')" class="fit-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-original">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="minimize-2" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Ukuran Asli (100% Piksel)</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Tampilkan gambar dalam resolusi asli 1:1.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Reading Mode Modal / Bottom Sheet -->
+    <div id="mode-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="closeModeModal(event)">
+      <div class="bg-slate-900 border border-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+        
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center">
+              <i data-lucide="book-open" class="w-4 h-4"></i>
+            </div>
+            <h3 class="text-sm font-bold text-white">Mode Membaca (Mihon View Modes)</h3>
           </div>
           <button onclick="closeModeModal()" class="p-1 rounded-lg text-slate-400 hover:text-white">
             <i data-lucide="x" class="w-4 h-4"></i>
@@ -501,21 +652,43 @@
         </div>
 
         <div class="space-y-2 mb-5">
-          <!-- 1. Buku 3D Manga RTL -->
-          <div onclick="selectReadingMode('book-rtl')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-book-rtl">
+          <!-- 1. Slide Manga RTL (Mihon Pager) -->
+          <div onclick="selectReadingMode('slide-rtl')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-slide-rtl">
             <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center flex-shrink-0">
-              <i data-lucide="book-open" class="w-5 h-5"></i>
+              <i data-lucide="move-horizontal" class="w-5 h-5"></i>
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-1.5">
-                <h4 class="text-xs font-bold text-white">Buku 3D — Manga (RTL)</h4>
-                <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300">Rekomendasi</span>
+                <h4 class="text-xs font-bold text-white">Slide Manga — RTL (Mihon Pager)</h4>
+                <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300">Autozoom + Fit</span>
               </div>
+              <p class="text-[11px] text-slate-400 mt-0.5">Mode geser kanan-ke-kiri ala Mihon dengan Autozoom & Fit to Screen.</p>
+            </div>
+          </div>
+
+          <!-- 2. Slide Barat LTR (Mihon Pager) -->
+          <div onclick="selectReadingMode('slide-ltr')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-slide-ltr">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="arrow-right-left" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Slide Barat — LTR (Mihon Pager)</h4>
+              <p class="text-[11px] text-slate-400 mt-0.5">Mode geser kiri-ke-kanan ala Mihon dengan Autozoom & Fit to Screen.</p>
+            </div>
+          </div>
+
+          <!-- 3. Buku 3D Manga RTL -->
+          <div onclick="selectReadingMode('book-rtl')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-book-rtl">
+            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="book-open" class="w-5 h-5"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <h4 class="text-xs font-bold text-white">Buku 3D — Manga (RTL)</h4>
               <p class="text-[11px] text-slate-400 mt-0.5">Animasi membalik buku fisik 3D, arah kanan ke kiri ala komik Jepang.</p>
             </div>
           </div>
 
-          <!-- 2. Buku 3D Barat LTR -->
+          <!-- 4. Buku 3D Barat LTR -->
           <div onclick="selectReadingMode('book-ltr')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-book-ltr">
             <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
               <i data-lucide="book" class="w-5 h-5"></i>
@@ -523,28 +696,6 @@
             <div class="flex-1 min-w-0">
               <h4 class="text-xs font-bold text-white">Buku 3D — Barat (LTR)</h4>
               <p class="text-[11px] text-slate-400 mt-0.5">Animasi membalik buku fisik 3D, arah kiri ke kanan ala komik Barat.</p>
-            </div>
-          </div>
-
-          <!-- 3. Slide Horizontal RTL -->
-          <div onclick="selectReadingMode('slide-rtl')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-slide-rtl">
-            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
-              <i data-lucide="move-horizontal" class="w-5 h-5"></i>
-            </div>
-            <div class="flex-1 min-w-0">
-              <h4 class="text-xs font-bold text-white">Slide Horizontal (RTL)</h4>
-              <p class="text-[11px] text-slate-400 mt-0.5">Geser halaman samping kanan-ke-kiri tanpa efek curl buku.</p>
-            </div>
-          </div>
-
-          <!-- 4. Slide Horizontal LTR -->
-          <div onclick="selectReadingMode('slide-ltr')" class="mode-opt p-3.5 rounded-2xl border cursor-pointer flex items-center gap-3.5 transition" id="opt-slide-ltr">
-            <div class="w-10 h-10 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center flex-shrink-0">
-              <i data-lucide="arrow-right-left" class="w-5 h-5"></i>
-            </div>
-            <div class="flex-1 min-w-0">
-              <h4 class="text-xs font-bold text-white">Slide Horizontal (LTR)</h4>
-              <p class="text-[11px] text-slate-400 mt-0.5">Geser halaman samping kiri-ke-kanan standar.</p>
             </div>
           </div>
 
@@ -560,8 +711,89 @@
           </div>
         </div>
 
-        <!-- Sound Effect Toggle -->
-        <div class="pt-3 border-t border-slate-800 flex items-center justify-between">
+      </div>
+    </div>
+
+    <!-- Mihon Complete Reader Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onclick="closeSettingsModal(event)">
+      <div class="bg-slate-900 border border-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar" onclick="event.stopPropagation()">
+        
+        <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+              <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold text-white">Pengaturan Reader Mihon</h3>
+              <p class="text-[10px] text-slate-400">Konfigurasi autozoom, navigasi & gestur</p>
+            </div>
+          </div>
+          <button onclick="closeSettingsModal()" class="p-1 rounded-lg text-slate-400 hover:text-white">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Section 1: Autozoom & Navigation -->
+        <div class="mb-5 pb-4 border-b border-slate-800/80">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-brand-400 block mb-2.5">Fitur Unggulan Mihon</span>
+          
+          <!-- Autozoom Toggle -->
+          <div class="p-3 rounded-2xl bg-slate-800/40 border border-slate-800 flex items-center justify-between mb-2.5">
+            <div class="pr-3">
+              <div class="flex items-center gap-1.5">
+                <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i>
+                <h4 class="text-xs font-bold text-white">Autozoom Halaman Lebar / Spread</h4>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-0.5">Otomatis memperbesar halaman ganda 2-page ke tinggi layar dan memfokuskan awal baca (RTL Kanan, LTR Kiri).</p>
+            </div>
+            <button onclick="toggleAutozoom()" id="toggle-autozoom-btn" class="w-11 h-6 rounded-full bg-brand-600 p-0.5 transition flex items-center flex-shrink-0">
+              <div id="toggle-autozoom-circle" class="w-5 h-5 rounded-full bg-white shadow-md transform translate-x-5 transition"></div>
+            </button>
+          </div>
+
+          <!-- Navigate to Pan Toggle -->
+          <div class="p-3 rounded-2xl bg-slate-800/40 border border-slate-800 flex items-center justify-between mb-2.5">
+            <div class="pr-3">
+              <div class="flex items-center gap-1.5">
+                <i data-lucide="move" class="w-3.5 h-3.5 text-indigo-400"></i>
+                <h4 class="text-xs font-bold text-white">Geser Sebelum Ganti Halaman</h4>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-0.5">Saat halaman ganda di-zoom, ketukan 'Next' menggeser separuh halaman lainnya sebelum beralih.</p>
+            </div>
+            <button onclick="toggleNavigateToPan()" id="toggle-navpan-btn" class="w-11 h-6 rounded-full bg-brand-600 p-0.5 transition flex items-center flex-shrink-0">
+              <div id="toggle-navpan-circle" class="w-5 h-5 rounded-full bg-white shadow-md transform translate-x-5 transition"></div>
+            </button>
+          </div>
+
+          <!-- Double Tap Zoom Toggle -->
+          <div class="p-3 rounded-2xl bg-slate-800/40 border border-slate-800 flex items-center justify-between">
+            <div class="pr-3">
+              <div class="flex items-center gap-1.5">
+                <i data-lucide="zoom-in" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <h4 class="text-xs font-bold text-white">Double-Tap / Double-Click Zoom</h4>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-0.5">Ketuk 2x untuk memperbesar 2.5x pada panel komik, ketuk 2x lagi untuk mereset.</p>
+            </div>
+            <button onclick="toggleDoubleTapZoom()" id="toggle-dtzoom-btn" class="w-11 h-6 rounded-full bg-brand-600 p-0.5 transition flex items-center flex-shrink-0">
+              <div id="toggle-dtzoom-circle" class="w-5 h-5 rounded-full bg-white shadow-md transform translate-x-5 transition"></div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 2: Webtoon Side Padding -->
+        <div class="mb-5 pb-4 border-b border-slate-800/80">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-brand-400 block mb-2.5">Lebar Kontainer Webtoon</span>
+          <p class="text-[10px] text-slate-400 mb-2.5">Sesuaikan lebar strip webtoon saat membaca di layar lebar / desktop:</p>
+          <div class="grid grid-cols-4 gap-1.5">
+            <button onclick="setWebtoonWidth('100')" class="webtoon-w-btn py-2 rounded-xl border text-[11px] font-bold text-slate-300 transition" id="btn-wb-100">100%</button>
+            <button onclick="setWebtoonWidth('85')" class="webtoon-w-btn py-2 rounded-xl border text-[11px] font-bold text-slate-300 transition" id="btn-wb-85">85%</button>
+            <button onclick="setWebtoonWidth('70')" class="webtoon-w-btn py-2 rounded-xl border text-[11px] font-bold text-slate-300 transition" id="btn-wb-70">70%</button>
+            <button onclick="setWebtoonWidth('55')" class="webtoon-w-btn py-2 rounded-xl border text-[11px] font-bold text-slate-300 transition" id="btn-wb-55">55%</button>
+          </div>
+        </div>
+
+        <!-- Section 3: Realistic Sound -->
+        <div class="flex items-center justify-between">
           <div class="flex items-center gap-2.5">
             <i data-lucide="volume-2" class="w-4 h-4 text-slate-400"></i>
             <div>
@@ -569,8 +801,8 @@
               <p class="text-[10px] text-slate-500">Efek desiran kertas saat membalik halaman</p>
             </div>
           </div>
-          <button onclick="toggleSound()" id="toggle-sound-btn" class="w-11 h-6 rounded-full bg-brand-600 p-0.5 transition flex items-center">
-            <div id="toggle-sound-circle" class="w-5 h-5 rounded-full bg-white shadow-md transform translate-x-5 transition"></div>
+          <button onclick="toggleSound()" id="toggle-sound-settings-btn" class="w-11 h-6 rounded-full bg-brand-600 p-0.5 transition flex items-center">
+            <div id="toggle-sound-settings-circle" class="w-5 h-5 rounded-full bg-white shadow-md transform translate-x-5 transition"></div>
           </button>
         </div>
 
@@ -588,8 +820,13 @@
     let currentChapters = [];
     let isSortDesc = false;
 
-    // Reader State
+    // Mihon Reader State
     let readingMode = localStorage.getItem('komik_reading_mode') || 'book-rtl';
+    let scaleType = localStorage.getItem('komik_scale_type') || 'fit-screen';
+    let isAutozoomEnabled = localStorage.getItem('komik_autozoom_enabled') !== '0';
+    let isNavigateToPanEnabled = localStorage.getItem('komik_navigate_to_pan') !== '0';
+    let isDoubleTapZoomEnabled = localStorage.getItem('komik_double_tap_zoom') !== '0';
+    let webtoonWidth = localStorage.getItem('komik_webtoon_width') || '70';
     let isSoundEnabled = localStorage.getItem('komik_sound_enabled') !== '0';
     let activeChapter = null;
     let activeChapterIndex = -1;
@@ -601,12 +838,19 @@
     let chapterPagesData = null;
     let audioContext = null;
 
+    // Pan-Zoom states map: pageNum -> state object
+    const panZoomStates = new Map();
+    let autozoomToastTimer = null;
+
     // Initialize App
     document.addEventListener("DOMContentLoaded", () => {
       lucide.createIcons();
       updateModeUI();
+      updateFitUI();
       updateSoundUI();
+      updateSettingsUI();
       startHUDClock();
+      setupReaderGestures();
       loadCatalog();
     });
 
@@ -1036,6 +1280,14 @@
       const webtoon = document.getElementById('webtoon-track');
       if (webtoon) webtoon.innerHTML = '';
       pdfDocument = null;
+      panZoomStates.clear();
+      const zoomHud = document.getElementById('floating-zoom-hud');
+      if (zoomHud) zoomHud.classList.add('hidden');
+      const badge = document.getElementById('autozoom-badge');
+      if (badge) {
+        badge.classList.remove('opacity-100');
+        badge.classList.add('opacity-0');
+      }
     }
 
     // Initialize with direct image URLs (CBR / CBZ)
@@ -1099,9 +1351,29 @@
       const stageW = stage.clientWidth || window.innerWidth;
       const stageH = stage.clientHeight || window.innerHeight;
 
-      let pageW = Math.min(stageW * 0.95, 600);
-      let pageH = Math.min(stageH * 0.92, pageW / 0.7);
-      pageW = Math.round(pageH * 0.7);
+      // Generous vertical and horizontal margins so book never overlaps topbar (63px) or bottombar (60px)
+      const marginV = stageW >= 768 ? 140 : 115;
+      const marginH = stageW >= 768 ? 60 : 20;
+
+      const availH = Math.max(300, stageH - marginV);
+      const availW = Math.max(260, stageW - marginH);
+
+      // On wide screens (>= 960px), 2-page spread book; on narrow/portrait screens (< 960px), single page
+      const isSpread = stageW >= 960;
+      const maxSingleW = isSpread ? Math.floor((availW - 30) / 2) : availW;
+
+      // Aspect ratio of comic page (typical manga is ~0.68 - 0.70)
+      let pageH = availH;
+      let pageW = Math.round(pageH * 0.7);
+
+      if (pageW > maxSingleW) {
+        pageW = maxSingleW;
+        pageH = Math.round(pageW / 0.7);
+      }
+      if (pageH > availH) {
+        pageH = availH;
+        pageW = Math.round(pageH * 0.7);
+      }
 
       for (let i = 1; i <= totalPages; i++) {
         const pageEl = document.createElement('div');
@@ -1109,7 +1381,7 @@
         pageEl.dataset.density = 'soft';
 
         const content = document.createElement('div');
-        content.className = 'page-content bg-slate-950 flex items-center justify-center relative overflow-hidden';
+        content.className = 'page-content bg-slate-950 flex items-center justify-center relative overflow-hidden p-1';
         content.style.width = '100%';
         content.style.height = '100%';
 
@@ -1120,7 +1392,7 @@
         if (type === 'image') {
           const img = document.createElement('img');
           img.src = imageUrls[i - 1];
-          img.className = 'w-full h-full object-contain pointer-events-none select-none';
+          img.className = 'max-w-full max-h-full object-contain pointer-events-none select-none';
           img.loading = 'lazy';
           img.alt = `Halaman ${i}`;
           content.appendChild(img);
@@ -1138,17 +1410,17 @@
       pageFlipInstance = new St.PageFlip(flipContainer, {
         width: pageW,
         height: pageH,
-        size: 'stretch',
-        minWidth: 260,
-        maxWidth: 1200,
-        minHeight: 380,
+        size: 'fixed',
+        minWidth: 200,
+        maxWidth: 1400,
+        minHeight: 300,
         maxHeight: 1600,
-        maxShadowOpacity: 0.6,
+        maxShadowOpacity: 0.5,
         showCover: false,
         mobileScrollSupport: false,
-        usePortrait: true,
+        usePortrait: !isSpread,
         drawShadow: true,
-        flippingTime: 550,
+        flippingTime: 480,
         startPage: Math.max(0, startPage - 1),
         direction: isRtl ? 'rtl' : 'ltr'
       });
@@ -1250,6 +1522,68 @@
 
         track.appendChild(pageEl);
       }
+
+      // Bottom Chapter Advance Card
+      const bottomCard = document.createElement('div');
+      bottomCard.id = 'webtoon-bottom-card';
+      bottomCard.className = 'w-full max-w-lg mx-auto my-12 p-6 bg-slate-900/90 border border-slate-800 rounded-3xl text-center shadow-2xl flex flex-col items-center';
+      const hasNext = activeChapterIndex < currentChapters.length - 1;
+      if (hasNext) {
+        const nextCh = currentChapters[activeChapterIndex + 1];
+        bottomCard.innerHTML = `
+          <div class="w-12 h-12 rounded-2xl bg-brand-500/10 text-brand-400 flex items-center justify-center mb-3">
+            <i data-lucide="skip-forward" class="w-6 h-6"></i>
+          </div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-brand-400">Chapter Selanjutnya</span>
+          <h4 class="text-sm font-bold text-white mt-1 mb-1 truncate max-w-full">${nextCh.name}</h4>
+          <p class="text-xs text-slate-400 mb-4">Gulir atau geser ke bawah lagi untuk langsung lanjut</p>
+          <button onclick="loadNextChapter()" class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs flex items-center gap-2 shadow-lg shadow-brand-500/25 transition active:scale-95">
+            Lanjut Chapter Berikutnya <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        `;
+      } else {
+        bottomCard.innerHTML = `
+          <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-2">
+            <i data-lucide="check" class="w-6 h-6"></i>
+          </div>
+          <h4 class="text-sm font-bold text-white">Ini Adalah Chapter Terakhir</h4>
+          <p class="text-xs text-slate-400 mt-1">Kamu telah menyelesaikan seluruh chapter komik ini!</p>
+        `;
+      }
+      track.appendChild(bottomCard);
+      lucide.createIcons();
+
+      const containerWebtoon = document.getElementById('container-webtoon');
+      let isWebtoonAdvancing = false;
+
+      // Handle wheel overscroll past bottom
+      containerWebtoon.onwheel = (e) => {
+        if (isWebtoonAdvancing || !hasNext) return;
+        const scrollBottom = containerWebtoon.scrollHeight - containerWebtoon.scrollTop - containerWebtoon.clientHeight;
+        if (scrollBottom <= 8 && e.deltaY > 15) {
+          isWebtoonAdvancing = true;
+          loadNextChapter();
+          setTimeout(() => { isWebtoonAdvancing = false; }, 1500);
+        }
+      };
+
+      // Handle touch swipe overscroll past bottom
+      let webtoonTouchStartY = 0;
+      containerWebtoon.ontouchstart = (e) => {
+        if (e.touches.length === 1) webtoonTouchStartY = e.touches[0].clientY;
+      };
+      containerWebtoon.ontouchend = (e) => {
+        if (isWebtoonAdvancing || !hasNext) return;
+        const scrollBottom = containerWebtoon.scrollHeight - containerWebtoon.scrollTop - containerWebtoon.clientHeight;
+        if (scrollBottom <= 15 && e.changedTouches.length === 1) {
+          const pullDist = webtoonTouchStartY - e.changedTouches[0].clientY;
+          if (pullDist > 40) { // pulled up past bottom
+            isWebtoonAdvancing = true;
+            loadNextChapter();
+            setTimeout(() => { isWebtoonAdvancing = false; }, 1500);
+          }
+        }
+      };
 
       const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
@@ -1464,6 +1798,59 @@
         }
       }
     }, { passive: false });
+
+    // Touch Screen Swipe Gestures (Simulate scroll down/up & swipe left/right)
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+
+    window.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+      const reader = document.getElementById('view-reader');
+      if (reader.classList.contains('hidden')) return;
+
+      // In Webtoon mode, native continuous scroll is handled
+      if (readingMode === 'webtoon') return;
+
+      if (e.changedTouches.length === 1) {
+        const deltaX = e.changedTouches[0].clientX - touchStartX;
+        const deltaY = e.changedTouches[0].clientY - touchStartY;
+        const deltaTime = Date.now() - touchStartTime;
+
+        const absX = Math.abs(deltaX);
+        const absY = Math.abs(deltaY);
+
+        if (deltaTime < 650 && (absX > 30 || absY > 30)) {
+          if (absY > absX) {
+            // Vertical swipe gesture
+            // Swipe Down (deltaY > 30) -> Next Page (simulates mouse wheel scroll down)
+            if (deltaY > 30) {
+              flipPageForward();
+            } else if (deltaY < -30) {
+              // Swipe Up (deltaY < -30) -> Prev Page (simulates mouse wheel scroll up)
+              flipPageBackward();
+            }
+          } else {
+            // Horizontal swipe gesture
+            const isRtl = readingMode === 'book-rtl' || readingMode === 'slide-rtl';
+            if (isRtl) {
+              if (deltaX < -30) flipPageForward(); // Swipe left in RTL -> next page
+              else if (deltaX > 30) flipPageBackward();
+            } else {
+              if (deltaX > 30) flipPageForward(); // Swipe right in LTR -> next page
+              else if (deltaX < -30) flipPageBackward();
+            }
+          }
+        }
+      }
+    }, { passive: true });
 
     // --- READING MODE SWITCHER ---
     function openModeModal() {
