@@ -69,7 +69,8 @@ class GDriveSource(
             key = PREF_GDRIVE_LINKS
             title = "Google Drive Folder Links"
             dialogTitle = "Input Link Google Drive"
-            dialogMessage = "Masukkan satu atau beberapa link Google Drive (folder induk, folder komik, atau file). Pisahkan beberapa link dengan baris baru (enter):\n\nContoh:\nhttps://drive.google.com/drive/folders/1m6tcNvSysd0kE2x-33dxGtkXlXVJsYMB?usp=sharing"
+            dialogMessage =
+                "Masukkan satu atau beberapa link Google Drive (folder induk, folder komik, atau file). Pisahkan beberapa link dengan baris baru (enter):\n\nContoh:\nhttps://drive.google.com/drive/folders/1m6tcNvSysd0kE2x-33dxGtkXlXVJsYMB?usp=sharing"
             setDefaultValue(DEFAULT_LINKS)
             summaryProvider = androidx.preference.Preference.SummaryProvider<EditTextPreference> { pref ->
                 val text = pref.text
@@ -104,7 +105,9 @@ class GDriveSource(
 
     override suspend fun getLatestUpdates(page: Int): MangasPage = getPopularManga(page)
 
-    override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = withContext(Dispatchers.IO) {
+    override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = withContext(
+        Dispatchers.IO,
+    ) {
         if (page > 1) return@withContext MangasPage(emptyList(), false)
         val all = loadMangaFromLinks()
         val filtered = if (query.isBlank()) {
@@ -252,7 +255,13 @@ class GDriveSource(
             pfd.close()
 
             entries.mapIndexed { index, entryName ->
-                Page(index, imageUrl = "https://gdrive.internal/$fileId/$index/${URLEncoder.encode(fileName, "UTF-8")}?entry=${URLEncoder.encode(entryName, "UTF-8")}")
+                Page(
+                    index,
+                    imageUrl = "https://gdrive.internal/$fileId/$index/${URLEncoder.encode(
+                        fileName,
+                        "UTF-8",
+                    )}?entry=${URLEncoder.encode(entryName, "UTF-8")}",
+                )
             }
         }
     }
@@ -344,7 +353,8 @@ class GDriveSource(
             val html = response.body.string()
             val confirmMatch = Regex("""[?&]confirm=([a-zA-Z0-9_-]+)""").find(html)
             val confirmToken = confirmMatch?.groupValues?.getOrNull(1) ?: "t"
-            val confirmUrl = "https://drive.usercontent.google.com/download?id=$fileId&export=download&confirm=$confirmToken"
+            val confirmUrl = "https://drive.usercontent.google.com/download" +
+                "?id=$fileId&export=download&confirm=$confirmToken"
             request = Request.Builder()
                 .url(confirmUrl)
                 .header("User-Agent", USER_AGENT)
@@ -556,7 +566,9 @@ class GDriveSource(
             val fileName = match.groupValues[2]
             if (!seenIds.add(fileId)) continue
 
-            val isFolder = !fileName.contains(".") || unescaped.contains("\"$fileId\",null,null,null,\"application/vnd.google-apps.folder\"")
+            val isFolder =
+                !fileName.contains(".") ||
+                    unescaped.contains("\"$fileId\",null,null,null,\"application/vnd.google-apps.folder\"")
             val mimeType = if (isFolder) "application/vnd.google-apps.folder" else "application/octet-stream"
             results.add(GDriveItem(fileId, fileName, isFolder, mimeType))
         }
@@ -584,10 +596,15 @@ class GDriveSource(
 
     private fun isComicFile(name: String, mimeType: String?): Boolean {
         val lower = name.lowercase()
-        if (lower.endsWith(".pdf") || lower.endsWith(".cbz") || lower.endsWith(".cbr") || lower.endsWith(".zip") || lower.endsWith(".rar")) {
+        if (lower.endsWith(".pdf") || lower.endsWith(".cbz") || lower.endsWith(".cbr") || lower.endsWith(".zip") ||
+            lower.endsWith(".rar")
+        ) {
             return true
         }
-        if (mimeType == "application/pdf" || mimeType == "application/zip" || mimeType == "application/x-rar" || mimeType == "application/x-cbr" || mimeType == "application/x-cbz") {
+        if (mimeType == "application/pdf" || mimeType == "application/zip" || mimeType == "application/x-rar" ||
+            mimeType == "application/x-cbr" ||
+            mimeType == "application/x-cbz"
+        ) {
             return true
         }
         return false
@@ -598,14 +615,17 @@ class GDriveSource(
         if (fileName.endsWith(".cbz", ignoreCase = true) ||
             fileName.endsWith(".cbr", ignoreCase = true) ||
             fileName.endsWith(".zip", ignoreCase = true) ||
-            fileName.endsWith(".rar", ignoreCase = true)) {
+            fileName.endsWith(".rar", ignoreCase = true)
+        ) {
             return false
         }
         return try {
             file.inputStream().use { input ->
                 val header = ByteArray(4)
                 val read = input.read(header)
-                read >= 4 && header[0] == '%'.code.toByte() && header[1] == 'P'.code.toByte() && header[2] == 'D'.code.toByte() && header[3] == 'F'.code.toByte()
+                read >= 4 && header[0] == '%'.code.toByte() && header[1] == 'P'.code.toByte() &&
+                    header[2] == 'D'.code.toByte() &&
+                    header[3] == 'F'.code.toByte()
             }
         } catch (_: Exception) {
             false
@@ -646,9 +666,11 @@ class GDriveSource(
         const val PREF_GDRIVE_LINKS = "gdrive_links"
         const val PREF_GDRIVE_API_KEY = "gdrive_api_key"
         const val DEFAULT_LINKS = "https://drive.google.com/drive/folders/1m6tcNvSysd0kE2x-33dxGtkXlXVJsYMB?usp=sharing"
-        const val OLD_DEFAULT_LINKS = "https://drive.google.com/drive/folders/1Ht86KpWendZW5qe6IprceMgV0T86Ed8u?usp=sharing"
+        const val OLD_DEFAULT_LINKS =
+            "https://drive.google.com/drive/folders/1Ht86KpWendZW5qe6IprceMgV0T86Ed8u?usp=sharing"
         const val DEFAULT_API_KEY = "AIzaSyAWGrfCCr7albM3lmCc937gx4uIphbpeKQ"
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 }
 

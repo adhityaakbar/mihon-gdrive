@@ -92,14 +92,17 @@ internal class GDrivePageLoader(
         if (fileName.endsWith(".cbz", ignoreCase = true) ||
             fileName.endsWith(".cbr", ignoreCase = true) ||
             fileName.endsWith(".zip", ignoreCase = true) ||
-            fileName.endsWith(".rar", ignoreCase = true)) {
+            fileName.endsWith(".rar", ignoreCase = true)
+        ) {
             return false
         }
         return try {
             file.inputStream().use { input ->
                 val header = ByteArray(4)
                 val read = input.read(header)
-                read >= 4 && header[0] == '%'.code.toByte() && header[1] == 'P'.code.toByte() && header[2] == 'D'.code.toByte() && header[3] == 'F'.code.toByte()
+                read >= 4 && header[0] == '%'.code.toByte() && header[1] == 'P'.code.toByte() &&
+                    header[2] == 'D'.code.toByte() &&
+                    header[3] == 'F'.code.toByte()
             }
         } catch (_: Exception) {
             false

@@ -9,7 +9,8 @@ on:
 
 jobs:
   update_website:
-    runs-on: 'ubuntu-26.04'
+    if: github.repository == 'mihonapp/mihon'
+    runs-on: ubuntu-latest
 
     steps:
       - name: Update website

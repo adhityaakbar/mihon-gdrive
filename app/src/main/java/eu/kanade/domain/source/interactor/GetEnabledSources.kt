@@ -2,6 +2,7 @@ package eu.kanade.domain.source.interactor
 
 import dev.zacsweers.metro.Inject
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.source.gdrive.isGDrive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -10,7 +11,6 @@ import tachiyomi.domain.source.model.Pins
 import tachiyomi.domain.source.model.Source
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.source.local.isLocal
-import eu.kanade.tachiyomi.source.gdrive.isGDrive
 
 @Inject
 class GetEnabledSources(
