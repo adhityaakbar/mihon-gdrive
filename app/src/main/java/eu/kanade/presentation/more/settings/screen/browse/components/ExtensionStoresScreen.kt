@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import eu.kanade.presentation.category.components.CategoryFloatingActionButton
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoreScreenState
+import eu.kanade.presentation.more.settings.screen.browse.RECOMMENDED_EXTENSION_STORES
+import eu.kanade.presentation.more.settings.screen.browse.RecommendedExtensionStore
 import mihon.domain.extension.model.ExtensionStore
 import mihon.icons.materialsymbols.MaterialSymbols
 import mihon.icons.materialsymbols.rounded.Refresh
@@ -32,7 +34,10 @@ fun ExtensionStoresScreen(
     onClickDelete: (ExtensionStore) -> Unit,
     onClickRefresh: () -> Unit,
     navigateUp: () -> Unit,
+    onAddRecommended: (RecommendedExtensionStore) -> Unit = {},
+    onOpenRecommended: (RecommendedExtensionStore) -> Unit = {},
 ) {
+    val recommended = RECOMMENDED_EXTENSION_STORES.filterNot { it.isAdded(state.stores) }
     val lazyListState = rememberLazyListState()
     Scaffold(
         topBar = { scrollBehavior ->
@@ -57,7 +62,7 @@ fun ExtensionStoresScreen(
             )
         },
     ) { paddingValues ->
-        if (state.isEmpty) {
+        if (state.isEmpty && recommended.isEmpty()) {
             EmptyScreen(
                 MR.strings.extensionStoresScreen_emptyLabel,
                 modifier = Modifier.padding(paddingValues),
@@ -74,6 +79,9 @@ fun ExtensionStoresScreen(
             onOpenWebsite = onOpenWebsite,
             onOpenDiscord = onOpenDiscord,
             onClickDelete = onClickDelete,
+            recommended = recommended,
+            onAddRecommended = onAddRecommended,
+            onOpenRecommended = onOpenRecommended,
         )
     }
 }

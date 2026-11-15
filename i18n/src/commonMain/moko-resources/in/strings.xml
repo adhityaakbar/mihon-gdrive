@@ -878,6 +878,10 @@
     <string name="extensionStoresScreen.addStoreDeeplink.bodyText">Apakah Anda ingin menambahkan ekstensi di bawah ini?</string>
     <string name="extensionStoresScreen.deleteStore.title">Hapus ekstensi</string>
     <string name="extensionStoresScreen.deleteStore.body">Apakah Anda ingin menghapus ekstensi \"%1$s\" (%2$s)?</string>
+    <string name="extensionStoresScreen.recommended.title">Store rekomendasi</string>
+    <string name="extensionStoresScreen.recommended.summary">Store pihak ketiga berisi ekstensi untuk banyak sumber manga online. Ekstensi tidak ditinjau oleh aplikasi ini, tambahkan hanya store yang kamu percaya.</string>
+    <string name="extensionStoresScreen.recommended.keiyoushi">Store komunitas terbesar: ratusan sumber dari berbagai bahasa, termasuk Indonesia</string>
+    <string name="extensionStoresScreen.recommended.yuzono">Sumber tambahan yang tidak ada di Keiyoushi</string>
     <string name="extensionStoresScreen.addStoreInput.inputLabel">Menyimpan indeks URL</string>
     <string name="pref_webtoon_vertical_navigator_on_left">Letakkan navigator vertikal di sisi kiri</string>
     <string name="download_bookmarked">Ditandai</string>

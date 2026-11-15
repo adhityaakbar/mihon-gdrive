@@ -49,6 +49,8 @@ class ExtensionStoresScreen(
             onClickDelete = { viewModel.showDialog(ExtensionStoreDialog.Delete(it)) },
             onClickRefresh = { viewModel.refreshRepos() },
             navigateUp = navigator::pop,
+            onAddRecommended = { viewModel.showDialog(ExtensionStoreDialog.Confirm(url = it.indexUrl)) },
+            onOpenRecommended = { context.openInBrowser(it.githubUrl) },
         )
 
         when (val dialog = successState.dialog) {
