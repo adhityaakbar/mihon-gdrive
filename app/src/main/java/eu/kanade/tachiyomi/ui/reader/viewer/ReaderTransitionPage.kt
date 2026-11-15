@@ -16,7 +16,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.reader.ChapterTransition
+import eu.kanade.presentation.reader.GDriveLoadingProgress
 import eu.kanade.presentation.reader.reportPress
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -63,6 +65,7 @@ fun ReaderTransitionPage(
                     color = MaterialTheme.colorScheme.onBackground,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                GDriveLoadingProgress(modifier = Modifier.padding(top = 12.dp))
             }
             is ReaderChapter.State.Error -> Column(
                 modifier = Modifier.padding(statusPadding),

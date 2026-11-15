@@ -408,6 +408,7 @@
     <string name="pref_double_tap_zoom">Double tap to zoom</string>
     <string name="pref_cutout_short">Show content in cutout area</string>
     <string name="pref_page_transitions">Animate page transitions</string>
+    <string name="pref_page_flip_animation">Book page flip (paged modes)</string>
     <string name="pref_load_ahead_only_over_wifi">Load ahead only on Wi-Fi</string>
     <string name="pref_load_ahead_only_over_wifi_summary">Saves mobile data by loading only the pages near the one you\'re reading</string>
     <string name="pref_flash_page">Flash on page change</string>

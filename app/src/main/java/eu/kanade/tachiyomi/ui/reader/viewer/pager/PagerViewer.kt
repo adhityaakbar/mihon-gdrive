@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 
 import android.content.Context
 import android.graphics.ColorFilter
+import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams
 import android.widget.FrameLayout
@@ -30,6 +31,8 @@ import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.collectChanges
 import eu.kanade.tachiyomi.ui.reader.viewer.mouseWheelPaging
 import eu.kanade.tachiyomi.ui.reader.viewer.position
+import eu.kanade.tachiyomi.util.system.readerBackgroundColor
+import eu.kanade.tachiyomi.widget.ViewPagerAdapter
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import mihon.app.di.appGraph
@@ -106,6 +109,41 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
+    /** Paper-like curl drawn over horizontal pagers while a page turns. */
+    private val curlView = PageCurlView(activity, spineAtStart = this !is R2LPagerViewer)
+
+    private var useCurl = false
+
+    private val curlListener = object : ViewPager.SimpleOnPageChangeListener() {
+        override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {
+            if (!useCurl || positionOffset <= 0f || positionOffset >= 1f) {
+                endCurl()
+                return
+            }
+            val left = pageViewAt(position)
+            val right = pageViewAt(position + 1)
+            // R2L adapters are reversed: the earlier page sits on the right and turns from its left edge.
+            val (turning, under, progress) = if (this@PagerViewer is R2LPagerViewer) {
+                Triple(right, left, 1f - positionOffset)
+            } else {
+                Triple(left, right, positionOffset)
+            }
+            if (turning == null) {
+                endCurl()
+                return
+            }
+            curlView.backgroundColour = activity.readerBackgroundColor(general.theme)
+            val touchY = pager.lastTouchDownY
+            curlView.fromTop = touchY >= 0f && touchY < pager.height / 2f
+            curlView.show(turning, under, progress)
+            pager.alpha = 0f
+        }
+
+        override fun onPageScrollStateChanged(state: Int) {
+            if (state == ViewPager.SCROLL_STATE_IDLE) endCurl()
+        }
+    }
+
     init {
         pager.isVisible = false // Don't layout the pager yet
         pager.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
@@ -115,6 +153,7 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
         pager.id = R.id.reader_pager
         pager.adapter = adapter
         pager.addOnPageChangeListener(pagerListener)
+        pager.addOnPageChangeListener(curlListener)
         pager.tapListener = { event ->
             val viewPosition = IntArray(2)
             pager.getLocationOnScreen(viewPosition)
@@ -141,6 +180,9 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
             if (old != null && old.theme != new.theme) {
                 refreshAdapter()
             }
+            if (old?.usePageFlip != new.usePageFlip) {
+                applyPageFlip(new.usePageFlip)
+            }
         }
         settingsViewModel.simplePaged.collectChanges(scope) { old, new ->
             if (old != null) {
@@ -162,6 +204,37 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
         scope.cancel()
     }
 
+    private fun endCurl() {
+        if (curlView.isCurling) curlView.hide()
+        if (pager.alpha != 1f) pager.alpha = 1f
+    }
+
+    private fun pageViewAt(position: Int): View? {
+        val item = adapter.items.getOrNull(position) ?: return null
+        return pager.children.firstOrNull { (it as? ViewPagerAdapter.PositionableView)?.item === item }
+    }
+
+    private fun applyPageFlip(enabled: Boolean) {
+        useCurl = enabled && pager.isHorizontal
+        if (!useCurl) endCurl()
+        if (enabled && !pager.isHorizontal) {
+            val transformer = BookFlipPageTransformer(isHorizontal = false, spineAtStart = true)
+            pager.setPageTransformer(transformer.reverseDrawingOrder, transformer)
+        } else {
+            pager.setPageTransformer(false, null)
+            // Clear what a transformer left on the pages it held.
+            pager.children.forEach {
+                it.translationX = 0f
+                it.translationY = 0f
+                it.rotationX = 0f
+                it.rotationY = 0f
+                it.scaleX = 1f
+                it.scaleY = 1f
+                it.alpha = 1f
+            }
+        }
+    }
+
     /**
      * Creates a new ViewPager.
      */
@@ -181,7 +254,12 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
             pager.children.filterIsInstance<PagerPageHolder>().forEach { it.pageColorFilter = pageFilter }
         }
         AndroidView(
-            factory = { context -> DisallowInterceptBarrier(context).apply { addView(pager) } },
+            factory = { context ->
+                DisallowInterceptBarrier(context).apply {
+                    addView(pager)
+                    addView(curlView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+                }
+            },
             modifier = modifier.mouseWheelPaging(this),
         )
     }

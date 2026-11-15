@@ -24,6 +24,8 @@ class ReaderPreferences(
 
     val pageTransitions: Preference<Boolean> = preferenceStore.getBoolean("pref_enable_transitions_key", true)
 
+    val pageFlipAnimation: Preference<Boolean> = preferenceStore.getBoolean("pref_page_flip_animation", true)
+
     val loadAheadOnlyOverWifi: Preference<Boolean> = preferenceStore.getBoolean(
         "pref_reader_load_ahead_only_over_wifi",
         true,
