@@ -25,6 +25,8 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.sourcePreferences
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -41,8 +43,11 @@ import tachiyomi.domain.chapter.service.ChapterRecognition
 import tachiyomi.domain.manga.model.Manga
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 import tachiyomi.domain.source.model.Source as DomainSource
 
 @Inject
@@ -231,7 +236,19 @@ class GDriveSource(
         }
 
         val file = getOrDownloadFile(fileId, fileName)
-        if (isPdfFile(file, fileName)) {
+        try {
+            GDriveDownloadProgress.set(
+                fileId,
+                GDriveDownloadProgress.Entry(fileName, GDriveDownloadProgress.Stage.PREPARING, file.length(), file.length()),
+            )
+            readPages(file, fileId, fileName)
+        } finally {
+            GDriveDownloadProgress.finish(fileId)
+        }
+    }
+
+    private fun readPages(file: File, fileId: String, fileName: String): List<Page> {
+        return if (isPdfFile(file, fileName)) {
             val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
             val renderer = PdfRenderer(pfd)
             val count = renderer.pageCount
@@ -328,6 +345,8 @@ class GDriveSource(
             .build()
     }
 
+    private val downloadLocks = ConcurrentHashMap<String, Mutex>()
+
     suspend fun getOrDownloadFile(fileId: String, fileName: String): File = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "gdrive_cache").apply { mkdirs() }
         val ext = fileName.substringAfterLast(".", "pdf")
@@ -336,35 +355,43 @@ class GDriveSource(
             return@withContext cacheFile
         }
 
+        // One download per file: page requests and chapter preloads wait for the one in flight.
+        downloadLocks.getOrPut(fileId) { Mutex() }.withLock {
+            if (cacheFile.exists() && cacheFile.length() > 0) return@withLock cacheFile
+            try {
+                downloadFile(fileId, fileName, dir, cacheFile)
+            } catch (e: Throwable) {
+                GDriveDownloadProgress.finish(fileId)
+                throw e
+            }
+        }
+    }
+
+    private fun downloadFile(fileId: String, fileName: String, dir: File, cacheFile: File): File {
+        GDriveDownloadProgress.set(
+            fileId,
+            GDriveDownloadProgress.Entry(fileName, GDriveDownloadProgress.Stage.CONNECTING, 0, -1),
+        )
+
         val tempFile = File(dir, "$fileId.tmp")
         if (tempFile.exists()) tempFile.delete()
 
-        val downloadUrl = "https://drive.google.com/uc?export=download&id=$fileId"
-        var request = Request.Builder()
-            .url(downloadUrl)
-            .header("User-Agent", USER_AGENT)
-            .build()
-
-        var response = networkHelper.client.newCall(request).execute()
-
-        // Handle Google Drive virus scan warning for large files
-        val contentType = response.header("Content-Type").orEmpty()
-        if (contentType.contains("text/html", ignoreCase = true)) {
-            val html = response.body.string()
-            val confirmMatch = Regex("""[?&]confirm=([a-zA-Z0-9_-]+)""").find(html)
-            val confirmToken = confirmMatch?.groupValues?.getOrNull(1) ?: "t"
-            val confirmUrl = "https://drive.usercontent.google.com/download" +
-                "?id=$fileId&export=download&confirm=$confirmToken"
-            request = Request.Builder()
-                .url(confirmUrl)
-                .header("User-Agent", USER_AGENT)
-                .build()
-            response = networkHelper.client.newCall(request).execute()
-        }
-
-        response.body.byteStream().use { input ->
-            tempFile.outputStream().use { output ->
-                input.copyTo(output)
+        // Connections drop on tablets (Wi-Fi sleep, roaming). Retry and resume from what was already
+        // written instead of failing the whole chapter.
+        var attempt = 0
+        while (true) {
+            try {
+                downloadInto(tempFile, fileId, fileName)
+                break
+            } catch (e: IOException) {
+                attempt++
+                if (attempt >= MAX_DOWNLOAD_ATTEMPTS) throw e
+                logcat(LogPriority.WARN, e) { "GDrive download of $fileName interrupted, retry $attempt" }
+                GDriveDownloadProgress.set(
+                    fileId,
+                    GDriveDownloadProgress.Entry(fileName, GDriveDownloadProgress.Stage.CONNECTING, tempFile.length(), -1),
+                )
+                Thread.sleep(RETRY_DELAY_MS * attempt)
             }
         }
 
@@ -375,7 +402,82 @@ class GDriveSource(
             error("Failed to download file from Google Drive")
         }
 
-        cacheFile
+        return cacheFile
+    }
+
+    /** Downloads [fileId] into [tempFile], continuing after its current length when it has one. */
+    private fun downloadInto(tempFile: File, fileId: String, fileName: String) {
+        var offset = tempFile.length()
+
+        fun call(url: String): Response {
+            val builder = Request.Builder().url(url).header("User-Agent", USER_AGENT)
+            if (offset > 0) builder.header("Range", "bytes=$offset-")
+            return networkHelper.client.newCall(builder.build()).execute()
+        }
+
+        var response = call("https://drive.google.com/uc?export=download&id=$fileId")
+
+        // Large files get a virus scan warning page first; follow its confirm link.
+        if (response.header("Content-Type").orEmpty().contains("text/html", ignoreCase = true)) {
+            val html = response.body.string()
+            val confirmToken = Regex("""[?&]confirm=([a-zA-Z0-9_-]+)""").find(html)
+                ?.groupValues?.getOrNull(1) ?: "t"
+            response = call(
+                "https://drive.usercontent.google.com/download?id=$fileId&export=download&confirm=$confirmToken",
+            )
+        }
+
+        response.use {
+            if (response.code == 416 && offset > 0) {
+                // Asked to resume past the end: the file was already complete.
+                return
+            }
+            if (!response.isSuccessful) {
+                throw IOException("Google Drive returned HTTP ${response.code} for $fileName")
+            }
+            if (response.header("Content-Type").orEmpty().contains("text/html", ignoreCase = true)) {
+                error("Google Drive refused the download of $fileName (quota or access limit). Try again later.")
+            }
+
+            val resumed = offset > 0 && response.code == 206
+            if (!resumed) offset = 0
+            val length = response.body.contentLength()
+            val totalBytes = if (length >= 0) offset + length else -1L
+            var bytesRead = offset
+            var lastReport = 0L
+            val report = {
+                GDriveDownloadProgress.set(
+                    fileId,
+                    GDriveDownloadProgress.Entry(
+                        fileName,
+                        GDriveDownloadProgress.Stage.DOWNLOADING,
+                        bytesRead,
+                        totalBytes,
+                    ),
+                )
+            }
+            report()
+            response.body.byteStream().use { input ->
+                FileOutputStream(tempFile, resumed).use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                        bytesRead += read
+                        val now = System.currentTimeMillis()
+                        if (now - lastReport >= PROGRESS_INTERVAL_MS) {
+                            lastReport = now
+                            report()
+                        }
+                    }
+                }
+            }
+            report()
+            if (totalBytes > 0 && bytesRead < totalBytes) {
+                throw IOException("Google Drive closed the download of $fileName early")
+            }
+        }
     }
 
     suspend fun getOrDownloadPdf(fileId: String, fileName: String): File = getOrDownloadFile(fileId, fileName)
@@ -663,6 +765,9 @@ class GDriveSource(
 
     companion object {
         const val ID = 1000L
+        private const val PROGRESS_INTERVAL_MS = 150L
+        private const val MAX_DOWNLOAD_ATTEMPTS = 5
+        private const val RETRY_DELAY_MS = 2_000L
         const val PREF_GDRIVE_LINKS = "gdrive_links"
         const val PREF_GDRIVE_API_KEY = "gdrive_api_key"
         const val DEFAULT_LINKS = "https://drive.google.com/drive/folders/1m6tcNvSysd0kE2x-33dxGtkXlXVJsYMB?usp=sharing"
