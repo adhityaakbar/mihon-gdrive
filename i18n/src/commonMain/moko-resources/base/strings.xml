@@ -395,6 +395,10 @@
     <string name="extensionStoresScreen.addStoreDeeplink.bodyText">Do you wish to add the extension store below?</string>
     <string name="extensionStoresScreen.deleteStore.title">Remove extension store</string>
     <string name="extensionStoresScreen.deleteStore.body">Do you wish to remove the extension store \"%1$s\" (%2$s)?</string>
+    <string name="extensionStoresScreen.recommended.title">Recommended stores</string>
+    <string name="extensionStoresScreen.recommended.summary">Third-party stores with extensions for many online manga sources. Extensions are not reviewed by this app, add only stores you trust.</string>
+    <string name="extensionStoresScreen.recommended.keiyoushi">Largest community store: hundreds of sources in many languages, including Indonesian</string>
+    <string name="extensionStoresScreen.recommended.yuzono">Extra sources not available in Keiyoushi</string>
 
       <!-- Reader section -->
     <string name="pref_fullscreen">Fullscreen</string>

@@ -25,8 +25,13 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.sourcePreferences
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -147,22 +152,9 @@ class GDriveSource(
                 return@withContext manga
             }
 
-            // Find first comic file for cover thumbnail if not already present
-            if (manga.thumbnail_url.isNullOrBlank()) {
-                val items = fetchFolderContents(targetId)
-                var firstFile = items.firstOrNull { !it.isFolder && isComicFile(it.name, it.mimeType) }
-                if (firstFile == null) {
-                    val sub = items.firstOrNull { it.isFolder }
-                    if (sub != null) {
-                        val subItems = fetchFolderContents(sub.id)
-                        firstFile = subItems.firstOrNull { !it.isFolder && isComicFile(it.name, it.mimeType) }
-                    }
-                }
-                if (firstFile != null) {
-                    manga.thumbnail_url = firstFile.thumbnailLink
-                        ?: "https://drive.google.com/thumbnail?id=${firstFile.id}&sz=w600"
-                }
-            }
+            // Always re-resolve: covers saved by older versions may be expired or point at files
+            // Drive has no thumbnail for. Custom covers are stored separately, so nothing is lost.
+            resolveFolderCover(targetId)?.let { manga.thumbnail_url = it }
 
             manga.description = "Komik Google Drive: ${manga.title}\nFolder ID: $targetId"
             manga.status = SManga.COMPLETED
@@ -288,7 +280,12 @@ class GDriveSource(
             .addInterceptor { chain ->
                 val request = chain.request()
                 val url = request.url.toString()
-                if (url.startsWith("https://gdrive.internal/")) {
+                if (url.startsWith("$CACHED_COVER_URL/")) {
+                    val segments = request.url.pathSegments
+                    val fileId = segments.getOrNull(1) ?: error("Invalid cover url: $url")
+                    val fileName = segments.getOrNull(2).orEmpty()
+                    cachedCoverResponse(request, fileId, fileName)
+                } else if (url.startsWith("https://gdrive.internal/")) {
                     val httpUrl = request.url
                     val pathSegments = httpUrl.pathSegments
                     val fileId = pathSegments.getOrNull(0) ?: error("Invalid image url: $url")
@@ -521,14 +518,30 @@ class GDriveSource(
 
                 if (subfolders.isNotEmpty()) {
                     // Container folder: each subfolder represents a manga/comic!
-                    for (sub in subfolders) {
-                        if (!seenUrls.add(sub.id)) continue
+                    val newSubfolders = subfolders.filter { seenUrls.add(it.id) }
+                    // Folders have no Drive thumbnail, so look inside each one (a few at a time).
+                    val limiter = Semaphore(COVER_LOOKUP_PARALLELISM)
+                    val covers = coroutineScope {
+                        newSubfolders.map { sub ->
+                            async {
+                                limiter.withPermit {
+                                    try {
+                                        resolveFolderCover(sub.id)
+                                    } catch (e: Exception) {
+                                        logcat(LogPriority.WARN, e) { "Failed to find cover for ${sub.name}" }
+                                        null
+                                    }
+                                }
+                            }
+                        }.awaitAll()
+                    }
+                    newSubfolders.forEachIndexed { index, sub ->
                         val cleanTitle = cleanComicTitle(sub.name)
                         list.add(
                             SManga.create().apply {
                                 url = sub.id
                                 title = cleanTitle
-                                thumbnail_url = sub.thumbnailLink
+                                thumbnail_url = covers[index]
                                 status = SManga.COMPLETED
                                 initialized = true
                                 description = "Komik Google Drive: $cleanTitle"
@@ -539,13 +552,12 @@ class GDriveSource(
                     // Single comic folder with chapter files directly
                     if (seenUrls.add(target)) {
                         val folderTitle = fetchFolderName(target) ?: "Google Drive Folder ($target)"
-                        val firstFile = comicFiles.firstOrNull()
+                        val cover = if (comicFiles.isNotEmpty()) resolveFolderCover(target, items) else null
                         list.add(
                             SManga.create().apply {
                                 url = target
                                 title = cleanComicTitle(folderTitle)
-                                thumbnail_url = firstFile?.thumbnailLink
-                                    ?: firstFile?.let { "https://drive.google.com/thumbnail?id=${it.id}&sz=w600" }
+                                thumbnail_url = cover
                                 status = SManga.COMPLETED
                                 initialized = true
                                 description = "Komik Google Drive: $title\nLink: $line"
@@ -574,6 +586,123 @@ class GDriveSource(
         }
     }
 
+    private val folderCovers = ConcurrentHashMap<String, String>()
+
+    /**
+     * Finds a cover for a comic folder, in order of preference:
+     * an image file in the folder (e.g. cover.jpg), Drive's thumbnail of the first PDF chapter,
+     * or the first page of the first archive chapter (served once that chapter is downloaded).
+     *
+     * Uses Drive's stable `thumbnail?id=` endpoint because the API's `thumbnailLink` expires after a few hours.
+     */
+    private suspend fun resolveFolderCover(folderId: String, knownItems: List<GDriveItem>? = null): String? {
+        folderCovers[folderId]?.let { return it }
+        val items = knownItems ?: fetchFolderContents(folderId)
+
+        val cover = coverFromItems(items) ?: run {
+            // Comic files may sit one level deeper (e.g. KUNGFU BOY -> kungfu boy).
+            val firstSub = items.filter { it.isFolder }
+                .minWithOrNull { a, b -> a.name.compareToCaseInsensitiveNaturalOrder(b.name) }
+                ?: return@run null
+            coverFromItems(fetchFolderContents(firstSub.id))
+        }
+        if (cover != null) folderCovers[folderId] = cover
+        return cover
+    }
+
+    private fun coverFromItems(items: List<GDriveItem>): String? {
+        val files = items.filter { !it.isFolder }
+        val images = files.filter { isImageFile(it.name, it.mimeType) }
+        val image = images.firstOrNull { COVER_IMAGE_NAME.containsMatchIn(it.name) }
+            ?: images.minWithOrNull { a, b -> a.name.compareToCaseInsensitiveNaturalOrder(b.name) }
+        if (image != null) return driveThumbnailUrl(image.id)
+
+        val chapters = files.filter { isComicFile(it.name, it.mimeType) }
+            .sortedWith { a, b -> a.name.compareToCaseInsensitiveNaturalOrder(b.name) }
+        // Prefer the first chapter Drive made a thumbnail for: folders can hold stray archives
+        // (e.g. a "drive-download-….zip") that sort before the real first chapter.
+        chapters.firstOrNull { it.hasThumbnail == true }?.let { return driveThumbnailUrl(it.id) }
+        val first = chapters.firstOrNull() ?: return null
+        val isPdf = first.mimeType == "application/pdf" || first.name.endsWith(".pdf", ignoreCase = true)
+        return if (isPdf && first.hasThumbnail == null) {
+            // Scraped listing: no thumbnail info, Drive usually has one for PDFs.
+            driveThumbnailUrl(first.id)
+        } else {
+            // No Drive thumbnail (CBZ/CBR, some PDFs): the interceptor draws the first page instead.
+            "$CACHED_COVER_URL/${first.id}/${URLEncoder.encode(first.name, "UTF-8")}"
+        }
+    }
+
+    private fun driveThumbnailUrl(fileId: String) = "https://drive.google.com/thumbnail?id=$fileId&sz=w600"
+
+    private fun isImageFile(name: String, mimeType: String?): Boolean =
+        mimeType?.startsWith("image/") == true ||
+            name.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "webp", "gif", "avif")
+
+    /**
+     * Serves the first page of a chapter as its cover, but only from an already downloaded copy:
+     * downloading whole chapters just to draw a library grid would burn data.
+     */
+    private fun cachedCoverResponse(request: Request, fileId: String, fileName: String): Response {
+        val ext = fileName.substringAfterLast(".", "pdf")
+        val cached = File(File(context.cacheDir, "gdrive_cache"), "$fileId.$ext")
+        val bytes = if (cached.isFile && cached.length() > 0) {
+            try {
+                if (isPdfFile(cached, fileName)) firstPdfPage(cached) else firstArchiveImage(cached)
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "Failed to read cover from $fileName" }
+                null
+            }
+        } else {
+            null
+        }
+
+        val builder = Response.Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+        return if (bytes != null) {
+            builder.code(200).message("OK").body(bytes.toResponseBody("image/*".toMediaType())).build()
+        } else {
+            builder.code(404).message("Not downloaded yet").body(ByteArray(0).toResponseBody(null)).build()
+        }
+    }
+
+    private fun firstPdfPage(file: File): ByteArray {
+        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+            PdfRenderer(pfd).use { renderer ->
+                renderer.openPage(0).use { page ->
+                    val scale = COVER_WIDTH.toFloat() / page.width
+                    val bitmap = Bitmap.createBitmap(
+                        COVER_WIDTH,
+                        (page.height * scale).toInt().coerceAtLeast(1),
+                        Bitmap.Config.ARGB_8888,
+                    )
+                    Canvas(bitmap).drawColor(Color.WHITE)
+                    val matrix = android.graphics.Matrix().apply { setScale(scale, scale) }
+                    page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    val out = ByteArrayOutputStream()
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                    bitmap.recycle()
+                    return out.toByteArray()
+                }
+            }
+        }
+    }
+
+    private fun firstArchiveImage(file: File): ByteArray? {
+        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+            ArchiveReader(pfd).use { reader ->
+                val first = reader.useEntries { entries ->
+                    entries
+                        .filter { it.isFile && ImageUtil.isImage(it.name) { reader.getInputStream(it.name)!! } }
+                        .map { it.name }
+                        .minWithOrNull { a, b -> a.compareToCaseInsensitiveNaturalOrder(b) }
+                } ?: return null
+                return reader.getInputStream(first)?.use { it.readBytes() }
+            }
+        }
+    }
+
     suspend fun fetchFolderContents(folderId: String): List<GDriveItem> = withContext(Dispatchers.IO) {
         val prefs = sourcePreferences()
         val apiKey = prefs.getString(PREF_GDRIVE_API_KEY, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_API_KEY
@@ -595,7 +724,7 @@ class GDriveSource(
             val tokenParam = if (pageToken != null) "&pageToken=${URLEncoder.encode(pageToken, "UTF-8")}" else ""
             val url = "https://www.googleapis.com/drive/v3/files?q=%27$folderId%27+in+parents+and+trashed=false" +
                 "&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true" +
-                "&fields=nextPageToken,files(id,name,mimeType,thumbnailLink)&key=$apiKey$tokenParam"
+                "&fields=nextPageToken,files(id,name,mimeType,thumbnailLink,hasThumbnail)&key=$apiKey$tokenParam"
 
             val request = Request.Builder()
                 .url(url)
@@ -632,6 +761,7 @@ class GDriveSource(
                         isFolder = isFolder,
                         mimeType = file.mimeType,
                         thumbnailLink = file.thumbnailLink,
+                        hasThumbnail = file.hasThumbnail,
                     ),
                 )
             }
@@ -768,6 +898,10 @@ class GDriveSource(
         private const val PROGRESS_INTERVAL_MS = 150L
         private const val MAX_DOWNLOAD_ATTEMPTS = 5
         private const val RETRY_DELAY_MS = 2_000L
+        private const val CACHED_COVER_URL = "https://gdrive.internal/cover"
+        private const val COVER_LOOKUP_PARALLELISM = 6
+        private const val COVER_WIDTH = 600
+        private val COVER_IMAGE_NAME = Regex("""^(cover|folder|poster|thumb)""", RegexOption.IGNORE_CASE)
         const val PREF_GDRIVE_LINKS = "gdrive_links"
         const val PREF_GDRIVE_API_KEY = "gdrive_api_key"
         const val DEFAULT_LINKS = "https://drive.google.com/drive/folders/1m6tcNvSysd0kE2x-33dxGtkXlXVJsYMB?usp=sharing"
@@ -785,6 +919,7 @@ data class GDriveItem(
     val isFolder: Boolean,
     val mimeType: String,
     val thumbnailLink: String? = null,
+    val hasThumbnail: Boolean? = null,
 )
 
 @Serializable
@@ -799,6 +934,7 @@ data class DriveFileItem(
     val name: String,
     val mimeType: String,
     val thumbnailLink: String? = null,
+    val hasThumbnail: Boolean? = null,
 )
 
 fun Source.isGDrive(): Boolean = id == GDriveSource.ID
