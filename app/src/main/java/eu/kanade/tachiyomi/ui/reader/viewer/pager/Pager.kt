@@ -50,6 +50,13 @@ open class Pager(
     private val gestureDetector = GestureDetectorWithLongTap(context, gestureListener)
 
     /**
+     * Y of the last finger down, relative to this pager, or -1 before the first touch. Lets page
+     * turn effects follow where the gesture started.
+     */
+    var lastTouchDownY: Float = -1f
+        private set
+
+    /**
      * Whether the gesture detector is currently enabled.
      */
     private var isGestureDetectorEnabled = true
@@ -58,6 +65,9 @@ open class Pager(
      * Dispatches a touch event.
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            lastTouchDownY = ev.y
+        }
         val handled = super.dispatchTouchEvent(ev)
         if (isGestureDetectorEnabled) {
             gestureDetector.onTouchEvent(ev)
