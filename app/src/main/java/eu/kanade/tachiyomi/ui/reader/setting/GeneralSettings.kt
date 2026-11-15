@@ -12,6 +12,7 @@ data class GeneralSettings(
     val drawUnderCutout: Boolean,
     val longTapEnabled: Boolean,
     val usePageTransitions: Boolean,
+    val usePageFlip: Boolean,
     val doubleTapAnimDuration: Int,
     val volumeKeysEnabled: Boolean,
     val volumeKeysInverted: Boolean,

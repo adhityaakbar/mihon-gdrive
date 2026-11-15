@@ -141,6 +141,9 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
             if (old != null && old.theme != new.theme) {
                 refreshAdapter()
             }
+            if (old?.usePageFlip != new.usePageFlip) {
+                applyPageFlip(new.usePageFlip)
+            }
         }
         settingsViewModel.simplePaged.collectChanges(scope) { old, new ->
             if (old != null) {
@@ -160,6 +163,28 @@ abstract class PagerViewer(val activity: ReaderActivity) : Viewer {
     override fun destroy() {
         super.destroy()
         scope.cancel()
+    }
+
+    private fun applyPageFlip(enabled: Boolean) {
+        if (enabled) {
+            val transformer = BookFlipPageTransformer(
+                isHorizontal = pager.isHorizontal,
+                spineAtStart = this !is R2LPagerViewer,
+            )
+            pager.setPageTransformer(transformer.reverseDrawingOrder, transformer)
+        } else {
+            pager.setPageTransformer(false, null)
+            // Clear what the transformer left on the pages it held.
+            pager.children.forEach {
+                it.translationX = 0f
+                it.translationY = 0f
+                it.rotationX = 0f
+                it.rotationY = 0f
+                it.scaleX = 1f
+                it.scaleY = 1f
+                it.alpha = 1f
+            }
+        }
     }
 
     /**
